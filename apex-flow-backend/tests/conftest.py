@@ -1,11 +1,14 @@
 import uuid
 from typing import AsyncGenerator
+import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+from app.core.database import get_db
+from app.main import app
 
 
 @pytest_asyncio.fixture
@@ -34,6 +37,19 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
     await test_engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def override_get_db_dependency(db: AsyncSession):
+    """
+    Autouse fixture that overrides FastAPI get_db dependency in app with the isolated test session.
+    """
+    async def _get_db_override() -> AsyncGenerator[AsyncSession, None]:
+        yield db
+
+    app.dependency_overrides[get_db] = _get_db_override
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
