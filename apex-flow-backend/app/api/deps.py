@@ -1,5 +1,5 @@
 import uuid
-from typing import Optional
+from typing import Any, Dict, Optional
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,23 @@ async def get_current_user_from_api_key(
     )
 
 
+def _extract_user_id(payload: Dict[str, Any]) -> uuid.UUID:
+    """Parse the 'sub' claim from a decoded JWT payload into a UUID."""
+    user_id_str = payload.get("sub")
+    try:
+        return uuid.UUID(user_id_str)
+    except (ValueError, TypeError):
+        raise UnauthorizedException("Invalid user ID in JWT sub claim.")
+
+
+def _decode_bearer(authorization: Optional[str]) -> Dict[str, Any]:
+    """Extract and decode the Bearer token from an Authorization header."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise UnauthorizedException("Missing or invalid Authorization header.")
+    token = authorization.split("Bearer ", 1)[1].strip()
+    return decode_supabase_jwt(token)
+
+
 async def get_current_user_from_jwt(
     authorization: Optional[str] = Header(None),
 ) -> uuid.UUID:
@@ -33,14 +50,15 @@ async def get_current_user_from_jwt(
     Authenticates requests via the Bearer Supabase JWT in Authorization header.
     Returns user_id (sub claim).
     """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise UnauthorizedException("Missing or invalid Authorization header.")
+    payload = _decode_bearer(authorization)
+    return _extract_user_id(payload)
 
-    token = authorization.split("Bearer ", 1)[1].strip()
-    payload = decode_supabase_jwt(token)
-    user_id_str = payload.get("sub")
 
-    try:
-        return uuid.UUID(user_id_str)
-    except (ValueError, TypeError):
-        raise UnauthorizedException("Invalid user ID in JWT sub claim.")
+async def get_jwt_payload(
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """
+    Dependency that returns the full decoded JWT payload.
+    Used by auth endpoints that need more than just the user_id (e.g. email, name).
+    """
+    return _decode_bearer(authorization)
