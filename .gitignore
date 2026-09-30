@@ -1,0 +1,34 @@
+# Python & Virtual Environment
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Environment files & Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Node.js / Frontend (Future Next.js Dashboard)
+node_modules/
+.next/
+out/
+build/
+dist/
+*.log
+
+# Pytest & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
