@@ -11,21 +11,21 @@
 It provides a **lightweight, zero-knowledge control plane** to orchestrate multi-step workflows, manage step-level state checkpointing, automatically execute retries, and deliver real-time visual monitoring—all while keeping code execution, database credentials, and LLM API keys entirely within the developer's local or hosted workers.
 
 > [!NOTE]
-> **Flexibility Notice**: The core philosophy, security model, and functionality described in this document are established foundational pillars. Specific stack components, API schemas, and feature roadmap details can evolve and adapt as implementation progresses.
+> **Flexibility Notice**: The core philosophy, security model, and functionality described in this document are established foundational pillars. Specific stack components, API schemas, and feature roadmap details can evolve and adapt as implementation progresses. Code snippets provided are conceptual illustrations.
 
 ---
 
 ## 💥 Problem Statement & Solution
 
 ### The Bottlenecks
-1. **The Mid-Chain Failure Trap**: In a 5-step script chaining LLM extraction and external APIs (e.g., Stripe, Salesforce), a failure on step 4 crashes the entire script, forcing complex custom database logging or full manual reruns.
+1. **The Mid-Chain Failure Trap**: In a multi-step script chaining LLM extraction and external APIs (e.g., Stripe, Salesforce), a failure on step 4 crashes the entire script, forcing complex custom database logging or full manual reruns.
 2. **Infrastructure Overhead**: Running distributed background tasks usually requires configuring Redis, Celery, RabbitMQ, or SQS queues, creating maintenance burden for lean teams.
 3. **Black-Box Monitoring**: Debugging asynchronous pipelines using standard terminal logs is painful, noisy, and inefficient.
 
 ### The ApexFlow Solution
 ApexFlow operates on a **Zero-Knowledge Control Plane Architecture**:
 - 🔒 **Bring Your Own Worker & Keys**: Execution happens exclusively on the developer's infrastructure using local environment variables and API keys. ApexFlow never touches raw user data or model credentials.
-- 🔄 **Durable Step Execution**: Workflows are broken into modular steps (`@client.workflow` and `ctx.step(...)`). When a step fails, ApexFlow retries **only the failed step** using automated state memoization, bypassing previously completed steps.
+- 🔄 **Durable Step Execution**: Workflows are broken into modular steps. When a step fails, ApexFlow retries **only the failed step** using automated state memoization, bypassing previously completed steps.
 - ⚡ **Lightweight Queue Management**: Uses database row locking (`FOR UPDATE SKIP LOCKED`) in PostgreSQL to sequence and dispatch task steps to workers without requiring Redis.
 - 📊 **Real-Time Auditing**: Interactive dashboard displays workflow execution timelines, step durations, status badges, and input/output payload histories.
 
@@ -47,11 +47,12 @@ graph TD
   - **ORM & Driver**: SQLAlchemy 2.0 (Async) + `asyncpg`.
   - **Database**: PostgreSQL / Supabase (Relational integrity, row locking, JSONB storage).
   - **Migrations & Auth**: Alembic for schema migrations; Supabase Auth / JWT for multi-tenant isolation.
+  - **Modular Architecture**: Layered structure with `core/`, `models/`, `schemas/`, `services/`, and `api/v1/`.
 
 ### 2. Developer SDK (`apex-flow-sdk`)
 - **Role**: Lightweight client library providing intuitive function decorators and context managers to define and run stateful workflows locally.
 - **Initial Implementation**: Python SDK (using `httpx` for async control plane handshakes).
-- **Example Usage**:
+- **Illustrative Example**:
   ```python
   import os
   from apex_flow_sdk import ApexFlowClient, WorkflowContext
@@ -121,21 +122,6 @@ Acts as step execution log and distributed queue via `FOR UPDATE SKIP LOCKED`.
 | `created_at` | `TIMESTAMPTZ` | Timestamp when step was queued. |
 | `updated_at` | `TIMESTAMPTZ` | Timestamp of last status update. |
 
-> [!TIP]
-> A compound index on `(status, created_at)` on `workflow_steps` is created to keep worker queue polling queries instantaneous under high load.
-
----
-
-## 🚀 Expansion Roadmap & Future-Proofing
-
-1. **The Pointer Pattern for Large Payloads**:
-   - Small outputs are saved directly in Postgres `JSONB`.
-   - Large outputs (or binary payloads) are offloaded by the SDK to Object Storage (S3 / Supabase Storage), storing only secure URL pointers in the control plane to keep database storage lean.
-2. **Language-Agnostic API Contract**:
-   - FastAPI endpoints (`/poll` and `/report`) strictly expose universal JSON primitives (`workflow_id`, `step_name`, `status`, `attempt_count`, `output`), enabling seamless addition of TypeScript, Go, or Java SDKs without control plane changes.
-3. **Framework Adapters & Execution Contexts**:
-   - Decoupled `WorkflowContext` design allows wrapping step execution into FastAPI background tasks, Celery workers, AWS Lambda functions, or scheduled cron jobs.
-
 ---
 
 ## 📁 System Project Structure
@@ -144,12 +130,19 @@ Acts as step execution log and distributed queue via `FOR UPDATE SKIP LOCKED`.
 apex-flow/                          # System Workspace Root
 ├── docs/                           # Documentation & Specifications
 │   ├── README.md                   # System Documentation (This file)
+│   ├── WORKFLOW_SPEC.md            # Detailed Workflow Orchestration Mechanics
 │   └── Project Apex_...pdf         # Initial Proposal Specification
 ├── apex-flow-backend/              # FastAPI Control Plane Sub-Project
-│   ├── app/                        # Application Code (API, Models, Core)
-│   ├── alembic/                    # Database Migrations
+│   ├── app/
+│   │   ├── api/v1/                 # Thin HTTP Routers (workflows, steps, health)
+│   │   ├── core/                   # Infrastructure (config, database, exceptions)
+│   │   ├── models/                 # SQLAlchemy ORM Models (Workflow, WorkflowStep)
+│   │   ├── schemas/                # Pydantic Validation Schemas
+│   │   ├── services/               # Domain Business Logic & Queue Services
+│   │   └── main.py                 # FastAPI Application Entrypoint
+│   ├── tests/                      # Automated Integration & Unit Tests
 │   ├── requirements.txt            # Python Dependencies
-│   └── main.py                     # Entrypoint
+│   └── pytest.ini                  # Pytest Configuration
 ├── apex-flow-sdk/                  # Python SDK Sub-Project (Upcoming)
 └── apex-flow-dashboard/            # Next.js Dashboard Sub-Project (Upcoming)
 ```
