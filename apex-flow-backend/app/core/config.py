@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Optional, Union
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,8 +15,12 @@ class Settings(BaseSettings):
     # Cloud deployment PORT (Railway / Render inject $PORT)
     PORT: int = 8000
 
-    # Database connection URL (Defaulting to asyncpg driver for PostgreSQL)
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/apexflow"
+    # Supabase JWT Secret (Required in production for verifying Dashboard JWTs)
+    SUPABASE_JWT_SECRET: Optional[str] = None
+
+    # Database connection URL (Required in environment / .env)
+    DATABASE_URL: str
+
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
