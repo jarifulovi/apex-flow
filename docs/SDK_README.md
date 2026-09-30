@@ -14,33 +14,51 @@ SDKs do not execute heavy logic on the ApexFlow Control Plane. Instead, they han
 
 ## 🌐 Control Plane Connection Protocol
 
-All language SDKs communicate with the backend control plane via standard HTTP/1.1 or HTTP/2 JSON REST endpoints:
+All language SDKs communicate with the backend control plane via standard HTTP/1.1 or HTTP/2 JSON REST endpoints. 
+
+**Authentication**: Every SDK request must include the project API key in the HTTP request headers:
+```http
+X-ApexFlow-Project-Key: af_live_...
+```
 
 ```text
-[ Developer Worker SDK ] ──(HTTP REST)──> [ ApexFlow FastAPI Control Plane ]
+[ Developer Worker SDK ] ──(HTTP REST with X-ApexFlow-Project-Key)──> [ ApexFlow Control Plane ]
 ```
 
 ### Protocol Interaction Flow:
 
 1. **Triggering a Workflow**:
    - **Endpoint**: `POST /api/v1/workflows`
+   - **Header**: `X-ApexFlow-Project-Key: <key>`
    - **Payload**: `{"user_id": "<uuid>", "metadata": {...}}`
    - **Purpose**: Initializes a master workflow execution run (`status = 'pending'`).
 
 2. **Step Queue Registration**:
    - **Endpoint**: `POST /api/v1/steps`
+   - **Header**: `X-ApexFlow-Project-Key: <key>`
    - **Payload**: `{"workflow_id": "<uuid>", "step_name": "<name>", "input_payload": {...}}`
    - **Purpose**: Registers a step in the control plane queue (`status = 'queued'`).
 
 3. **Worker Queue Polling**:
    - **Endpoint**: `POST /api/v1/steps/poll`
    - **Header**: `X-ApexFlow-Project-Key: <key>`
-   - **Purpose**: Worker polls for the next available queued step (dispatched via `FOR UPDATE SKIP LOCKED`).
+   - **Purpose**: Worker polls for the next available queued step belonging to the authenticated tenant (dispatched via `FOR UPDATE SKIP LOCKED`).
 
 4. **Step Execution Status Reporting**:
    - **Endpoint**: `POST /api/v1/steps/report`
+   - **Header**: `X-ApexFlow-Project-Key: <key>`
    - **Payload**: `{"step_id": "<uuid>", "status": "success" | "failed", "output_payload": {...}, "error_message": "..."}`
    - **Purpose**: Reports local step execution completion or failure.
+
+---
+
+## ⚙️ Environment Variable Resolution Standard
+
+All language SDKs must automatically attempt to resolve configuration from standard environment variables before falling back to local defaults:
+
+- `APEXFLOW_BASE_URL`: Base URL of the control plane backend (default: `http://127.0.0.1:8000`).
+- `APEXFLOW_PROJECT_KEY`: Secret Project API key (`af_live_...`).
+
 
 ---
 

@@ -17,19 +17,21 @@ sequenceDiagram
     participant Worker as SDK Worker Client
 
     Note over App, Backend: 1. Workflow Initiation
-    App->>Backend: POST /api/v1/workflows (user_id, metadata)
-    Backend->>DB: INSERT INTO workflows (status='pending')
+    App->>Backend: POST /api/v1/workflows (Header: X-ApexFlow-Project-Key)
+    Backend->>DB: Validate Key Hash & Extract user_id
+    Backend->>DB: INSERT INTO workflows (user_id, status='pending')
     Backend-->>App: Returns Workflow Object (id)
 
     Note over App, Backend: 2. Step Queueing
-    App->>Backend: POST /api/v1/steps (workflow_id, step_name, input)
+    App->>Backend: POST /api/v1/steps (Header: X-ApexFlow-Project-Key, workflow_id, step_name, input)
+    Backend->>DB: Validate Key Hash & Verify Workflow ownership
     Backend->>DB: INSERT INTO workflow_steps (status='queued', attempt_count=0)
     Backend-->>App: Returns Step Object (id, status='queued')
 
     Note over Worker, DB: 3. Worker Polling & Execution Loop
     loop Continuous Worker Polling
-        Worker->>Backend: POST /api/v1/steps/poll
-        Backend->>DB: SELECT FOR UPDATE SKIP LOCKED WHERE status='queued'
+        Worker->>Backend: POST /api/v1/steps/poll (Header: X-ApexFlow-Project-Key)
+        Backend->>DB: SELECT FOR UPDATE SKIP LOCKED WHERE status='queued' AND user_id=tenant_id
         alt Step Available
             Backend->>DB: UPDATE step status='running', attempt_count += 1
             Backend->>DB: UPDATE parent workflow status='running' (if pending)
@@ -39,12 +41,12 @@ sequenceDiagram
             Worker->>Worker: Executes step function locally with user env/API keys
             
             alt Step Succeeded
-                Worker->>Backend: POST /api/v1/steps/report (status='success', output_payload)
+                Worker->>Backend: POST /api/v1/steps/report (Header: X-ApexFlow-Project-Key, status='success', output)
                 Backend->>DB: UPDATE step status='success', output_payload=output
                 Backend->>DB: Check remaining steps (If 0 pending -> workflow status='completed')
                 Backend-->>Worker: Returns Updated Step
             else Step Failed
-                Worker->>Backend: POST /api/v1/steps/report (status='failed', error_message)
+                Worker->>Backend: POST /api/v1/steps/report (Header: X-ApexFlow-Project-Key, status='failed', error)
                 Backend->>DB: UPDATE step status='failed', error_message=stacktrace
                 Backend->>DB: UPDATE parent workflow status='failed'
                 Backend-->>Worker: Returns Updated Step
@@ -85,38 +87,49 @@ sequenceDiagram
 
 ## ⚡ Concurrency & Queueing Mechanics (`FOR UPDATE SKIP LOCKED`)
 
-ApexFlow uses PostgreSQL's native row-level locking capabilities to deliver distributed message queuing without requiring external infrastructure (like Redis, RabbitMQ, or Celery).
+ApexFlow uses PostgreSQL's native row-level locking capabilities combined with multi-tenant scoping to deliver distributed message queuing without requiring external infrastructure (like Redis, RabbitMQ, or Celery).
 
 ### How it operates in `app/services/step_service.py`:
 
 ```python
 stmt = (
     select(WorkflowStep)
+    .join(Workflow, WorkflowStep.workflow_id == Workflow.id)
     .where(WorkflowStep.status == "queued")
-    .order_by(WorkflowStep.created_at.asc())
+)
+if user_id:
+    stmt = stmt.where(Workflow.user_id == user_id)
+
+stmt = (
+    stmt.order_by(WorkflowStep.created_at.asc())
     .limit(1)
     .with_for_update(skip_locked=True)
 )
 ```
 
-1. **Isolation**: When multiple SDK workers send concurrent `POST /api/v1/steps/poll` requests, `with_for_update(skip_locked=True)` ensures that each worker locks a unique queued step.
-2. **Non-Blocking**: Workers never wait for another worker's lock; if a row is currently locked by Worker A, Worker B automatically skips it and locks the next available row.
-3. **Atomicity**: The step status transition to `running` and `attempt_count` increment happen within the locked transaction before releasing.
+1. **Multi-Tenant Isolation**: Filters queued steps by `user_id` so workers only pull steps belonging to their own tenant account.
+2. **Isolation**: When multiple SDK workers send concurrent `POST /api/v1/steps/poll` requests, `with_for_update(skip_locked=True)` ensures that each worker locks a unique queued step.
+3. **Non-Blocking**: Workers never wait for another worker's lock; if a row is currently locked by Worker A, Worker B automatically skips it and locks the next available row.
+4. **Atomicity**: The step status transition to `running` and `attempt_count` increment happen within the locked transaction before releasing.
 
 ---
 
 ## 🌐 Control Plane REST API Contract Summary
 
-| Endpoint | Method | Purpose | Response |
-| :--- | :--- | :--- | :--- |
-| `/api/v1/health` | `GET` | Lightweight liveness check (0 DB queries). | `{"status": "ok"}` |
-| `/api/v1/health/db` | `GET` | Readiness check verifying PostgreSQL ping. | `{"status": "online", "database": "healthy"}` |
-| `/api/v1/workflows` | `POST` | Create a new master workflow run. | `WorkflowDetailResponse` (`201 Created`) |
-| `/api/v1/workflows` | `GET` | List workflow runs (paginated, user filterable). | `List[WorkflowResponse]` |
-| `/api/v1/workflows/{id}` | `GET` | Fetch workflow run details & step timeline history. | `WorkflowDetailResponse` |
-| `/api/v1/steps` | `POST` | Queue a new step under a workflow. | `WorkflowStepResponse` (`201 Created`) |
-| `/api/v1/steps/poll` | `POST` | Worker polls for next queued step via row-locking. | `WorkflowStepResponse` or `204 No Content` |
-| `/api/v1/steps/report` | `POST` | Worker reports step execution result (`success`/`failed`). | `WorkflowStepResponse` |
+| Endpoint | Method | Header / Auth | Purpose | Response |
+| :--- | :--- | :--- | :--- | :--- |
+| `/api/v1/health` | `GET` | None | Lightweight liveness check (0 DB queries). | `{"status": "ok"}` |
+| `/api/v1/health/db` | `GET` | None | Readiness check verifying PostgreSQL ping. | `{"status": "online", "database": "healthy"}` |
+| `/api/v1/keys` | `POST` | Bearer JWT | Create a new project API key. | `ProjectKeyCreatedResponse` (`201`) |
+| `/api/v1/keys` | `GET` | Bearer JWT | List user's project API keys. | `List[ProjectKeyResponse]` |
+| `/api/v1/keys/{id}` | `DELETE` | Bearer JWT | Revoke a project API key by ID. | `ProjectKeyResponse` |
+| `/api/v1/workflows` | `POST` | Project API Key | Create a new master workflow run. | `WorkflowDetailResponse` (`201 Created`) |
+| `/api/v1/workflows` | `GET` | Project API Key | List workflow runs (user-scoped). | `List[WorkflowResponse]` |
+| `/api/v1/workflows/{id}` | `GET` | Project API Key | Fetch workflow run details & step history. | `WorkflowDetailResponse` |
+| `/api/v1/steps` | `POST` | Project API Key | Queue a new step under a workflow. | `WorkflowStepResponse` (`201 Created`) |
+| `/api/v1/steps/poll` | `POST` | Project API Key | Worker polls next tenant step via row-locking. | `WorkflowStepResponse` or `204` |
+| `/api/v1/steps/report` | `POST` | Project API Key | Worker reports step execution result. | `WorkflowStepResponse` |
+
 
 ---
 

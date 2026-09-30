@@ -73,7 +73,27 @@ The **ApexFlow Backend Control Plane** manages workflow execution states, coordi
 
 ## 🗄️ Database Schemas
 
-### 1. `workflows` Table
+### 1. `project_keys` Table
+Stores hashed API project keys for SDK/Worker authentication.
+
+```sql
+CREATE TABLE project_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    key_prefix TEXT NOT NULL,
+    key_hash TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'active',
+    last_used_at TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Performance index for SHA-256 API key authentication lookup
+CREATE INDEX idx_project_keys_hash ON project_keys (key_hash) WHERE status = 'active';
+```
+
+### 2. `workflows` Table
 Tracks master execution states per tenant/user.
 
 ```sql
@@ -87,7 +107,7 @@ CREATE TABLE workflows (
 );
 ```
 
-### 2. `workflow_steps` Table
+### 3. `workflow_steps` Table
 Acts as step execution log and concurrency-safe distributed queue.
 
 ```sql
@@ -110,15 +130,34 @@ CREATE INDEX idx_workflow_steps_queue ON workflow_steps (status, created_at);
 
 ---
 
+## 🔒 Authentication & Security Layer
+
+The backend control plane enforces a **Two-Dependency Authentication Model** (`app/api/deps.py`):
+
+1. **`get_current_user_from_api_key`**: 
+   - Used by SDK/Worker routes (`/api/v1/workflows`, `/api/v1/steps`).
+   - Validates the `X-ApexFlow-Project-Key` header against stored SHA-256 hashes in `project_keys`.
+   - Automatically scopes workflow queueing, step polling, and status reporting to the key's owner (`user_id`).
+
+2. **`get_current_user_from_jwt`**:
+   - Used by Dashboard UI routes (`/api/v1/keys`).
+   - Decodes Supabase Bearer JWT tokens in the `Authorization` header (`sub` claim).
+
+---
+
 ## 🔌 API Endpoints Summary
 
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `/api/v1/health` | `GET` | Zero-DB liveness probe for cloud health checks. |
-| `/api/v1/health/db` | `GET` | Readiness probe checking live PostgreSQL ping. |
-| `/api/v1/workflows` | `POST` | Create a new workflow run execution state. |
-| `/api/v1/workflows` | `GET` | List workflows (paginated, user filterable). |
-| `/api/v1/workflows/{id}` | `GET` | Fetch workflow run details & step timeline history. |
-| `/api/v1/steps` | `POST` | Queue a new execution step under a workflow. |
-| `/api/v1/steps/poll` | `POST` | Poll next queued step via `FOR UPDATE SKIP LOCKED`. |
-| `/api/v1/steps/report` | `POST` | Report worker step execution status (`success`/`failed`). |
+| Endpoint | Method | Auth Dependency | Description |
+| :--- | :--- | :--- | :--- |
+| `/api/v1/health` | `GET` | None | Zero-DB liveness probe for cloud health checks. |
+| `/api/v1/health/db` | `GET` | None | Readiness probe checking live PostgreSQL ping. |
+| `/api/v1/keys` | `POST` | Supabase JWT | Create a new project API key (`raw_key` shown once). |
+| `/api/v1/keys` | `GET` | Supabase JWT | List user's active & revoked project API keys. |
+| `/api/v1/keys/{key_id}` | `DELETE` | Supabase JWT | Revoke a project API key by ID. |
+| `/api/v1/workflows` | `POST` | API Key | Create a new workflow run execution state. |
+| `/api/v1/workflows` | `GET` | API Key | List tenant workflows (paginated, user scoped). |
+| `/api/v1/workflows/{id}` | `GET` | API Key | Fetch workflow run details & step timeline history. |
+| `/api/v1/steps` | `POST` | API Key | Queue a new execution step under a workflow. |
+| `/api/v1/steps/poll` | `POST` | API Key | Poll tenant's next queued step via `FOR UPDATE SKIP LOCKED`. |
+| `/api/v1/steps/report` | `POST` | API Key | Report worker step status (`success`/`failed`). |
+

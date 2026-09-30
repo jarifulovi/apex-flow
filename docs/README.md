@@ -22,9 +22,11 @@ It provides a **lightweight, zero-knowledge control plane** to orchestrate multi
 ### The ApexFlow Solution
 ApexFlow operates on a **Zero-Knowledge Control Plane Architecture**:
 - 🔒 **Bring Your Own Worker & Keys**: Execution happens exclusively on the developer's infrastructure using local environment variables and API keys. ApexFlow never touches raw user data or model credentials.
+- 🔑 **API Key Security & Multi-Tenant Isolation**: Secure control plane communication using SHA-256 hashed Project API Keys (`af_live_...`) for workers and Supabase JWTs for dashboard management.
 - 🔄 **Durable Step Execution**: Workflows are broken into modular steps. When a step fails, ApexFlow retries **only the failed step** using automated state memoization, bypassing previously completed steps.
 - ⚡ **Lightweight Queue Management**: Uses database row locking (`FOR UPDATE SKIP LOCKED`) in PostgreSQL to sequence and dispatch task steps to workers without requiring Redis.
 - 📊 **Real-Time Auditing**: Interactive dashboard displays workflow execution timelines, step durations, status badges, and input/output payload histories.
+
 
 ---
 
