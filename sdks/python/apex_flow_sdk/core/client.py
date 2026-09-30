@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import os
 import uuid
 from typing import Any, Callable, Dict, Optional
 import httpx
@@ -15,13 +16,21 @@ class ApexFlowClient:
 
     def __init__(
         self,
-        base_url: str = "http://127.0.0.1:8000",
+        base_url: Optional[str] = None,
         project_key: Optional[str] = None,
     ):
-        self.base_url = base_url.rstrip("/")
-        self.project_key = project_key
+        resolved_url = base_url or os.getenv("APEXFLOW_BASE_URL") or "http://127.0.0.1:8000"
+        self.base_url = resolved_url.rstrip("/")
+        self.project_key = project_key or os.getenv("APEXFLOW_PROJECT_KEY")
         self._workflows: Dict[str, Callable] = {}
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+
+        headers = {}
+        if self.project_key:
+            headers["X-ApexFlow-Project-Key"] = self.project_key
+
+        self.http_client = httpx.AsyncClient(timeout=30.0, headers=headers)
+
+
 
     def workflow(self, name: str):
         """Decorator to register a workflow function under a unique name."""

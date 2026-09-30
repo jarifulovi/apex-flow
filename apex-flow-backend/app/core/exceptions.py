@@ -22,6 +22,17 @@ class ApexFlowException(Exception):
         self.details = details or {}
 
 
+class UnauthorizedException(ApexFlowException):
+    """Exception raised when authentication fails."""
+
+    def __init__(self, message: str = "Authentication failed.", code: str = "UNAUTHORIZED"):
+        super().__init__(
+            message=message,
+            code=code,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+
 class EntityNotFoundException(ApexFlowException):
     """Exception raised when a requested resource is not found."""
 

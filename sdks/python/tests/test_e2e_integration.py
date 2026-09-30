@@ -8,17 +8,22 @@ from apex_flow_sdk import ApexFlowClient, WorkflowContext
 
 
 @pytest.mark.asyncio
-async def test_sdk_and_backend_end_to_end_integration(test_user_id: uuid.UUID):
+async def test_sdk_and_backend_end_to_end_integration(
+    test_user_id: uuid.UUID, test_project_key: str
+):
     """
     True End-to-End Integration Test:
     Connects ApexFlow Python SDK directly to FastAPI Backend Control Plane & Live Supabase DB.
     Executes a multi-step workflow with sequential + parallel steps and verifies state checkpointing.
     """
     # Instantiate SDK client hooked directly to ASGI backend transport
-    client = ApexFlowClient(base_url="http://test")
+    client = ApexFlowClient(base_url="http://test", project_key=test_project_key)
     client.http_client = AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"X-ApexFlow-Project-Key": test_project_key},
     )
+
 
     # 1. Trigger workflow on control plane
     workflow_id = await client.trigger_workflow(

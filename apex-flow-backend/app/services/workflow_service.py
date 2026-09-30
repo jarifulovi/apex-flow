@@ -39,13 +39,20 @@ class WorkflowService:
         return list(result.scalars().all())
 
     @staticmethod
-    async def get_workflow_by_id(db: AsyncSession, workflow_id: uuid.UUID) -> Workflow:
-        """Get workflow detail by ID or raise EntityNotFoundException."""
+    async def get_workflow_by_id(
+        db: AsyncSession,
+        workflow_id: uuid.UUID,
+        user_id: Optional[uuid.UUID] = None,
+    ) -> Workflow:
+        """Get workflow detail by ID with optional user_id scoping or raise EntityNotFoundException."""
         query = (
             select(Workflow)
             .where(Workflow.id == workflow_id)
             .options(selectinload(Workflow.steps))
         )
+        if user_id:
+            query = query.where(Workflow.user_id == user_id)
+
         result = await db.execute(query)
         workflow = result.scalar_one_or_none()
 
@@ -53,3 +60,4 @@ class WorkflowService:
             raise EntityNotFoundException("Workflow", workflow_id)
 
         return workflow
+

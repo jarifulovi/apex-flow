@@ -78,6 +78,22 @@ async def test_user_id(db: AsyncSession) -> AsyncGenerator[uuid.UUID, None]:
     yield user_id
 
     # Clean up test user & related workflows
+    await db.execute(text("DELETE FROM project_keys WHERE user_id = :user_id"), {"user_id": user_id})
     await db.execute(text("DELETE FROM workflows WHERE user_id = :user_id"), {"user_id": user_id})
     await db.execute(text("DELETE FROM auth.users WHERE id = :user_id"), {"user_id": user_id})
     await db.commit()
+
+
+@pytest_asyncio.fixture
+async def test_project_key(db: AsyncSession, test_user_id: uuid.UUID) -> AsyncGenerator[str, None]:
+    """
+    Creates an active ProjectKey record in database for test_user_id and yields the raw API key.
+    """
+    from app.schemas.project_key import ProjectKeyCreate
+    from app.services.project_key_service import ProjectKeyService
+
+    created_key = await ProjectKeyService.create_project_key(
+        db=db, user_id=test_user_id, payload=ProjectKeyCreate(name="Test Key")
+    )
+    yield created_key.raw_key
+

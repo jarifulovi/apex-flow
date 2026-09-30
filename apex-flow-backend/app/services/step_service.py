@@ -33,20 +33,31 @@ class StepService:
         return step
 
     @staticmethod
-    async def poll_next_step(db: AsyncSession) -> Optional[WorkflowStep]:
+    async def poll_next_step(
+        db: AsyncSession,
+        user_id: Optional[uuid.UUID] = None,
+    ) -> Optional[WorkflowStep]:
         """
         Poll the next queued step using PostgreSQL FOR UPDATE SKIP LOCKED.
         Transitions step status to 'running' and increments attempt counter.
+        Supports multi-tenant user_id scoping.
         """
         stmt = (
             select(WorkflowStep)
+            .join(Workflow, WorkflowStep.workflow_id == Workflow.id)
             .where(WorkflowStep.status == "queued")
-            .order_by(WorkflowStep.created_at.asc())
+        )
+        if user_id:
+            stmt = stmt.where(Workflow.user_id == user_id)
+
+        stmt = (
+            stmt.order_by(WorkflowStep.created_at.asc())
             .limit(1)
             .with_for_update(skip_locked=True)
         )
         result = await db.execute(stmt)
         step = result.scalar_one_or_none()
+
 
         if not step:
             return None

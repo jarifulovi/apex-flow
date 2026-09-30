@@ -6,14 +6,18 @@ from app.main import app
 
 
 @pytest.mark.asyncio
-async def test_full_workflow_and_step_lifecycle_api(test_user_id: uuid.UUID):
+async def test_full_workflow_and_step_lifecycle_api(
+    test_user_id: uuid.UUID, test_project_key: str
+):
     """
     Integration test testing full REST API workflow lifecycle:
     Create Workflow -> Queue Step -> Worker Polls Step -> Worker Reports Step Success -> Workflow Completes.
     """
+    headers = {"X-ApexFlow-Project-Key": test_project_key}
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test", headers=headers
     ) as ac:
+
         # 1. Create Workflow
         wf_res = await ac.post(
             "/api/v1/workflows",
