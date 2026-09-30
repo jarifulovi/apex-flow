@@ -10,25 +10,27 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.main import app
 
+# Shared test engine with NullPool
+test_engine = create_async_engine(
+    settings.DATABASE_URL,
+    poolclass=NullPool,
+    connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+)
+
+TestAsyncSessionLocal = async_sessionmaker(
+    bind=test_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
+
 
 @pytest_asyncio.fixture
 async def db() -> AsyncGenerator[AsyncSession, None]:
     """
     Pytest fixture providing an isolated async database session per test function.
-    Uses NullPool to prevent asyncpg event loop sharing across pytest async tests.
     """
-    test_engine = create_async_engine(
-        settings.DATABASE_URL,
-        poolclass=NullPool,
-        connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
-    )
-    TestAsyncSessionLocal = async_sessionmaker(
-        bind=test_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autocommit=False,
-        autoflush=False,
-    )
     async with TestAsyncSessionLocal() as session:
         try:
             yield session
@@ -36,16 +38,22 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
             await session.close()
 
-    await test_engine.dispose()
-
 
 @pytest.fixture(autouse=True)
-def override_get_db_dependency(db: AsyncSession):
+def override_get_db_dependency():
     """
-    Autouse fixture that overrides FastAPI get_db dependency in app with the isolated test session.
+    Autouse fixture that overrides FastAPI get_db dependency in app to yield a fresh session per HTTP request.
     """
     async def _get_db_override() -> AsyncGenerator[AsyncSession, None]:
-        yield db
+        async with TestAsyncSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
 
     app.dependency_overrides[get_db] = _get_db_override
     yield
@@ -69,6 +77,7 @@ async def test_user_id(db: AsyncSession) -> AsyncGenerator[uuid.UUID, None]:
 
     yield user_id
 
-    # Clean up test user
+    # Clean up test user & related workflows
+    await db.execute(text("DELETE FROM workflows WHERE user_id = :user_id"), {"user_id": user_id})
     await db.execute(text("DELETE FROM auth.users WHERE id = :user_id"), {"user_id": user_id})
     await db.commit()
