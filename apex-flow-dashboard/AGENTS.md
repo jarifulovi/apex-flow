@@ -30,3 +30,19 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## 5. Libraries (`src/lib/`)
 - Dedicated for generic utilities, global configurations, third-party library setups, and API clients.
+- `lib/supabase/client.ts`: Supabase **browser** client only — used solely for auth flows (sign in, sign up, session management). Do NOT add a server client.
+
+## 6. Backend-First API Rule
+- **All data operations go through the FastAPI backend**. Never call Supabase directly for data.
+- Auth is the only exception: the Supabase browser client is used to authenticate the user and obtain a JWT session token.
+- The JWT `access_token` from Supabase is then passed as `Authorization: Bearer <token>` to every FastAPI request.
+- Use `useAuth()` to access the `accessToken` in any client component.
+
+## 7. Server Actions (`actions.ts`)
+- Do **not** create `actions.ts` for features that communicate with the FastAPI backend. Use client-side service functions or hooks instead.
+- `actions.ts` is only appropriate for auth flows or other cases where a Next.js Server Action is genuinely needed (e.g., session management that requires cookies).
+
+## 8. Auth State
+- `AuthProvider` (in `src/features/auth/context.tsx`) wraps the entire app and is the single source of truth for auth state.
+- Consume it via `useAuth()` from `src/features/auth/hooks.ts`.
+- Do not duplicate session state elsewhere.

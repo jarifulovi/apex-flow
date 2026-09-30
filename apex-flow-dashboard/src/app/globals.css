@@ -49,72 +49,72 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --background: #08080f;
+  --foreground: #f4f4f5;
+  --card: oklch(0.13 0.01 265);
+  --card-foreground: #f4f4f5;
+  --popover: oklch(0.13 0.01 265);
+  --popover-foreground: #f4f4f5;
+  --primary: oklch(0.6 0.22 265);
+  --primary-foreground: #f4f4f5;
+  --secondary: oklch(0.18 0.01 265);
+  --secondary-foreground: #f4f4f5;
+  --muted: oklch(0.18 0.01 265);
+  --muted-foreground: oklch(0.55 0 0);
+  --accent: oklch(0.18 0.01 265);
+  --accent-foreground: #f4f4f5;
+  --destructive: oklch(0.65 0.22 27);
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: oklch(0.6 0.22 265);
+  --chart-1: oklch(0.6 0.22 265);
+  --chart-2: oklch(0.55 0.18 195);
+  --chart-3: oklch(0.65 0.16 140);
+  --chart-4: oklch(0.7 0.15 60);
+  --chart-5: oklch(0.65 0.2 350);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.11 0.01 265);
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: oklch(0.6 0.22 265);
+  --sidebar-primary-foreground: #f4f4f5;
+  --sidebar-accent: oklch(0.18 0.01 265);
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: oklch(0.6 0.22 265);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #08080f;
+  --foreground: #f4f4f5;
+  --card: oklch(0.13 0.01 265);
+  --card-foreground: #f4f4f5;
+  --popover: oklch(0.13 0.01 265);
+  --popover-foreground: #f4f4f5;
+  --primary: oklch(0.6 0.22 265);
+  --primary-foreground: #f4f4f5;
+  --secondary: oklch(0.18 0.01 265);
+  --secondary-foreground: #f4f4f5;
+  --muted: oklch(0.18 0.01 265);
+  --muted-foreground: oklch(0.55 0 0);
+  --accent: oklch(0.18 0.01 265);
+  --accent-foreground: #f4f4f5;
+  --destructive: oklch(0.65 0.22 27);
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: oklch(0.6 0.22 265);
+  --chart-1: oklch(0.6 0.22 265);
+  --chart-2: oklch(0.55 0.18 195);
+  --chart-3: oklch(0.65 0.16 140);
+  --chart-4: oklch(0.7 0.15 60);
+  --chart-5: oklch(0.65 0.2 350);
+  --sidebar: oklch(0.11 0.01 265);
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: oklch(0.6 0.22 265);
+  --sidebar-primary-foreground: #f4f4f5;
+  --sidebar-accent: oklch(0.18 0.01 265);
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: oklch(0.6 0.22 265);
 }
 
 @layer base {
@@ -127,4 +127,179 @@
   html {
     @apply font-sans;
   }
+}
+
+/* =====================================================
+   AUTH STYLES
+   ===================================================== */
+
+.auth-layout {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #08080f;
+  overflow: hidden;
+}
+
+/* Subtle dot grid background */
+.auth-bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    circle,
+    rgba(139, 92, 246, 0.12) 1px,
+    transparent 1px
+  );
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+}
+
+/* Glowing orbs */
+.auth-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+}
+
+.auth-orb-1 {
+  width: 520px;
+  height: 520px;
+  top: -160px;
+  left: -180px;
+  background: radial-gradient(circle, rgba(109, 40, 217, 0.25) 0%, transparent 70%);
+  animation: orb-drift-1 12s ease-in-out infinite alternate;
+}
+
+.auth-orb-2 {
+  width: 420px;
+  height: 420px;
+  bottom: -120px;
+  right: -120px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.18) 0%, transparent 70%);
+  animation: orb-drift-2 14s ease-in-out infinite alternate;
+}
+
+@keyframes orb-drift-1 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(40px, 30px) scale(1.08); }
+}
+@keyframes orb-drift-2 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-30px, -20px) scale(1.1); }
+}
+
+/* Container */
+.auth-container {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 440px;
+  padding: 1.5rem;
+}
+
+/* Card */
+.auth-card {
+  background: rgba(16, 16, 28, 0.8);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-radius: 1.25rem;
+  padding: 2.5rem 2rem;
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 0 0 1px rgba(139, 92, 246, 0.08),
+    0 24px 48px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  animation: card-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Logo mark */
+.auth-logo-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  background: linear-gradient(135deg, rgba(109, 40, 217, 0.3), rgba(6, 182, 212, 0.2));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 14px;
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+}
+
+/* Input overrides for dark auth theme */
+.auth-input {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #f4f4f5 !important;
+  border-radius: 0.625rem;
+  height: 2.75rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.auth-input::placeholder {
+  color: rgba(161, 161, 170, 0.5);
+}
+
+.auth-input:focus {
+  border-color: rgba(139, 92, 246, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.12) !important;
+  outline: none;
+}
+
+.auth-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Button */
+.auth-btn {
+  height: 2.75rem;
+  background: linear-gradient(135deg, #7c3aed, #5b21b6) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+  transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+}
+
+.auth-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.45);
+  opacity: 0.95;
+}
+
+.auth-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.auth-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Footer */
+.auth-footer {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgba(113, 113, 122, 0.7);
+  z-index: 10;
 }

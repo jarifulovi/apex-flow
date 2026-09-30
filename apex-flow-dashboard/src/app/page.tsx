@@ -1,7 +1,5 @@
+import { redirect } from "next/navigation";
+
 export default function Home() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
-      <h1 className="text-3xl font-bold">ApexFlow Control Plane Dashboard</h1>
-    </main>
-  );
+  redirect("/auth/login");
 }
