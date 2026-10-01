@@ -15,8 +15,12 @@ class Settings(BaseSettings):
     # Cloud deployment PORT (Railway / Render inject $PORT)
     PORT: int = 8000
 
-    # Supabase JWT Secret (Required in production for verifying Dashboard JWTs)
+    # Supabase JWT Secret & JWKS URL for verifying Dashboard JWTs
     SUPABASE_JWT_SECRET: Optional[str] = None
+    SUPABASE_JWKS_URL: Optional[str] = None
+    SUPABASE_SERVICE_KEY: Optional[str] = None
+    SUPABASE_PUB_KEY: Optional[str] = None
+    SUPABASE_SECRET_KEY: Optional[str] = None
 
     # Database connection URL (Required in environment / .env)
     DATABASE_URL: str

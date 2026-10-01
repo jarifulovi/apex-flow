@@ -54,6 +54,26 @@ async def get_current_user_from_jwt(
     return _extract_user_id(payload)
 
 
+async def get_current_user_from_any_auth(
+    authorization: Optional[str] = Header(None),
+    x_apexflow_project_key: Optional[str] = Header(None, alias="X-ApexFlow-Project-Key"),
+    db: AsyncSession = Depends(get_db),
+) -> uuid.UUID:
+    """
+    Authenticates requests via either Bearer JWT (for Dashboard UI)
+    or X-ApexFlow-Project-Key header (for SDK/Workers).
+    """
+    if authorization and authorization.startswith("Bearer "):
+        payload = _decode_bearer(authorization)
+        return _extract_user_id(payload)
+    elif x_apexflow_project_key:
+        return await ProjectKeyService.authenticate_api_key(
+            db=db, raw_key=x_apexflow_project_key
+        )
+    else:
+        raise UnauthorizedException("Authentication required via Bearer token or Project Key.")
+
+
 async def get_jwt_payload(
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
@@ -62,3 +82,4 @@ async def get_jwt_payload(
     Used by auth endpoints that need more than just the user_id (e.g. email, name).
     """
     return _decode_bearer(authorization)
+

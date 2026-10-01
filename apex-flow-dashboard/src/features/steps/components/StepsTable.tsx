@@ -6,7 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import type { WorkflowStep } from "../data";
+import type { WorkflowStep } from "../api";
 
 const STATUS_CONFIG: Record<
   WorkflowStep["status"],
@@ -92,7 +92,7 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
                   </div>
                 </td>
                 <td>
-                  <span className="table-meta">{step.workflow_name ?? step.workflow_id.slice(0, 8)}</span>
+                  <span className="table-meta">#{step.workflow_id.slice(0, 8)}</span>
                 </td>
                 <td>
                   <span className={cfg.className}>

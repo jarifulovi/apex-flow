@@ -118,3 +118,24 @@ class StepService:
         await db.commit()
         await db.refresh(step)
         return step
+
+    @staticmethod
+    async def list_steps(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        status_filter: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[WorkflowStep]:
+        """List workflow steps for the specified user with optional status filtering."""
+        stmt = (
+            select(WorkflowStep)
+            .join(Workflow, WorkflowStep.workflow_id == Workflow.id)
+            .where(Workflow.user_id == user_id)
+        )
+        if status_filter and status_filter.lower() != "all":
+            stmt = stmt.where(WorkflowStep.status == status_filter.lower())
+        stmt = stmt.order_by(WorkflowStep.created_at.desc()).limit(limit).offset(offset)
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+

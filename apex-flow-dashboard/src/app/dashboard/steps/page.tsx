@@ -1,19 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Header } from "@/components/shared/Header";
-import { Footprints, Filter } from "lucide-react";
-import { DUMMY_STEPS } from "@/features/steps/data";
+import { Footprints, Loader2 } from "lucide-react";
+import { useAuth } from "@/features/auth/hooks";
+import { getSteps, type WorkflowStep } from "@/features/steps/api";
 import { StepsTable } from "@/features/steps/components/StepsTable";
 
 const ALL_STATUSES = ["all", "queued", "running", "success", "failed"] as const;
-type Filter = (typeof ALL_STATUSES)[number];
+type FilterStatus = (typeof ALL_STATUSES)[number];
 
 export default function StepsPage() {
-  const [filter, setFilter] = useState<Filter>("all");
+  const { accessToken } = useAuth();
+  const [filter, setFilter] = useState<FilterStatus>("all");
+  const [steps, setSteps] = useState<WorkflowStep[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered =
-    filter === "all" ? DUMMY_STEPS : DUMMY_STEPS.filter((s) => s.status === filter);
+  const loadSteps = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      setLoading(true);
+      const data = await getSteps(accessToken, filter);
+      setSteps(data);
+    } catch (err) {
+      console.error("Failed to load steps:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken, filter]);
+
+  useEffect(() => {
+    loadSteps();
+  }, [loadSteps]);
 
   return (
     <div className="dashboard-page">
@@ -35,11 +53,6 @@ export default function StepsPage() {
               onClick={() => setFilter(s)}
             >
               {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
-              <span className="filter-tab-count">
-                {s === "all"
-                  ? DUMMY_STEPS.length
-                  : DUMMY_STEPS.filter((st) => st.status === s).length}
-              </span>
             </button>
           ))}
         </div>
@@ -49,10 +62,18 @@ export default function StepsPage() {
             <Footprints size={15} className="section-icon" />
             <h2 id="steps-table-heading" className="dashboard-section-title">
               Execution Steps
-              <span className="section-count">{filtered.length}</span>
+              <span className="section-count">{steps.length}</span>
             </h2>
           </div>
-          <StepsTable steps={filtered} />
+
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-zinc-400">
+              <Loader2 size={24} className="animate-spin text-violet-400 mr-2" />
+              <span>Loading steps...</span>
+            </div>
+          ) : (
+            <StepsTable steps={steps} />
+          )}
         </section>
       </div>
     </div>

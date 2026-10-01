@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user_from_api_key
+from app.api.deps import get_current_user_from_any_auth, get_current_user_from_api_key
 from app.core.database import get_db
 from app.schemas.workflow import (
     WorkflowCreate,
@@ -34,11 +34,11 @@ async def list_workflows(
     user_id: Optional[uuid.UUID] = None,
     limit: int = 50,
     offset: int = 0,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_api_key),
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    List workflow execution runs.
+    List workflow execution runs. Accepts Bearer JWT (Dashboard UI) or Project Key (Workers).
     """
     target_user_id = user_id or authenticated_user_id
     return await WorkflowService.list_workflows(
@@ -49,7 +49,7 @@ async def list_workflows(
 @router.get("/workflows/{workflow_id}", response_model=WorkflowDetailResponse)
 async def get_workflow_detail(
     workflow_id: uuid.UUID,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_api_key),
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -59,5 +59,6 @@ async def get_workflow_detail(
     return await WorkflowService.get_workflow_by_id(
         db=db, workflow_id=workflow_id, user_id=authenticated_user_id
     )
+
 
 

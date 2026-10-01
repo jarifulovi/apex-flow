@@ -1,6 +1,6 @@
 import { GitBranch, Clock, CheckCircle2, AlertTriangle, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import type { Workflow } from "../data";
+import type { Workflow } from "../api";
 
 const STATUS_CONFIG: Record<
   Workflow["status"],
@@ -55,8 +55,10 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
                       <GitBranch size={13} />
                     </div>
                     <div>
-                      <p className="table-name">{wf.metadata?.name ?? "Unnamed Workflow"}</p>
-                      <p className="table-meta">{wf.metadata?.description ?? "—"}</p>
+                      <p className="table-name font-mono">
+                        {(wf.metadata?.name as string) || `Workflow #${wf.id.substring(0, 8)}`}
+                      </p>
+                      <p className="table-meta">ID: {wf.id}</p>
                     </div>
                   </div>
                 </td>
