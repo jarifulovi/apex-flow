@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # Environment mode: development, staging, production
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
+    DB_ECHO: bool = False
 
     # Cloud deployment PORT (Railway / Render inject $PORT)
     PORT: int = 8000
