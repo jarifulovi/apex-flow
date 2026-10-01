@@ -24,7 +24,7 @@ export async function createProjectKey(token: string, name: string): Promise<Pro
   });
 }
 
-export async function revokeProjectKey(token: string, keyId: string): Promise<ProjectKey> {
+export async function deleteProjectKey(token: string, keyId: string): Promise<ProjectKey> {
   return fetchWithAuth<ProjectKey>(`/api/v1/keys/${keyId}`, token, {
     method: "DELETE",
   });

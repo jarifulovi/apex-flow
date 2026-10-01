@@ -35,10 +35,10 @@ function formatDate(iso: string | null) {
 
 export function ProjectKeyList({
   keys,
-  onRevoke,
+  onDelete,
 }: {
   keys: ProjectKey[];
-  onRevoke?: (keyId: string) => void;
+  onDelete?: (keyId: string) => void;
 }) {
   if (keys.length === 0) {
     return (
@@ -53,7 +53,7 @@ export function ProjectKeyList({
   return (
     <div className="key-list">
       {keys.map((key) => {
-        const cfg = STATUS_CONFIG[key.status] || STATUS_CONFIG.revoked;
+        const cfg = STATUS_CONFIG[key.status] || STATUS_CONFIG.active;
         return (
           <div key={key.id} className={`key-card ${key.status === "revoked" ? "key-card--revoked" : ""}`}>
             <div className="key-card-left">
@@ -85,11 +85,11 @@ export function ProjectKeyList({
                 <span className="key-meta-value">{formatDate(key.created_at)}</span>
               </div>
 
-              {key.status === "active" && onRevoke && (
+              {onDelete && (
                 <button
-                  onClick={() => onRevoke(key.id)}
+                  onClick={() => onDelete(key.id)}
                   className="icon-btn hover:text-red-400 ml-2"
-                  title="Revoke key"
+                  title="Delete key"
                 >
                   <Trash2 size={14} />
                 </button>

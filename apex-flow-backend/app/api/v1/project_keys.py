@@ -42,14 +42,15 @@ async def list_project_keys(
 
 
 @router.delete("/keys/{key_id}", response_model=ProjectKeyResponse)
-async def revoke_project_key(
+async def delete_project_key(
     key_id: uuid.UUID,
     user_id: uuid.UUID = Depends(get_current_user_from_jwt),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Revoke a project key by ID. Revoked keys cannot be used for SDK execution.
+    Permanently delete a project key by ID. Deleted keys immediately lose access to SDK/Worker execution.
     """
-    return await ProjectKeyService.revoke_project_key(
+    return await ProjectKeyService.delete_project_key(
         db=db, user_id=user_id, key_id=key_id
     )
+

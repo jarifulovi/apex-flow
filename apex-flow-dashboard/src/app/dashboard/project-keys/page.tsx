@@ -7,7 +7,7 @@ import { useAuth } from "@/features/auth/hooks";
 import {
   getProjectKeys,
   createProjectKey,
-  revokeProjectKey,
+  deleteProjectKey,
   type ProjectKey,
   type ProjectKeyCreated,
 } from "@/features/project-keys/api";
@@ -47,16 +47,16 @@ export default function ProjectKeysPage() {
     return created;
   };
 
-  const handleRevokeKey = async (keyId: string) => {
+  const handleDeleteKey = async (keyId: string) => {
     if (!accessToken) return;
-    if (!confirm("Are you sure you want to revoke this project key? SDK workers using this key will immediately lose access.")) {
+    if (!confirm("Are you sure you want to permanently delete this project key? SDK workers using this key will immediately lose access.")) {
       return;
     }
     try {
-      await revokeProjectKey(accessToken, keyId);
+      await deleteProjectKey(accessToken, keyId);
       await loadKeys();
     } catch (err) {
-      console.error("Failed to revoke key:", err);
+      console.error("Failed to delete key:", err);
     }
   };
 
@@ -83,7 +83,7 @@ export default function ProjectKeysPage() {
           <ShieldCheck size={16} className="text-violet-400 shrink-0" />
           <p className="info-banner-text">
             Keys are shown <strong>once</strong> at creation. Store them securely — ApexFlow only
-            stores a SHA-256 hash. Revoke unused keys promptly.
+            stores a SHA-256 hash. Delete unused keys promptly.
           </p>
         </div>
 
@@ -102,7 +102,7 @@ export default function ProjectKeysPage() {
               <span>Loading project keys...</span>
             </div>
           ) : (
-            <ProjectKeyList keys={keys} onRevoke={handleRevokeKey} />
+            <ProjectKeyList keys={keys} onDelete={handleDeleteKey} />
           )}
         </section>
 

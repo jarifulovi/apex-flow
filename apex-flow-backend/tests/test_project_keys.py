@@ -40,13 +40,13 @@ async def test_project_key_service_lifecycle(
     assert len(keys) >= 1
     assert any(k.id == created.id for k in keys)
 
-    # 4. Revoke key
-    revoked = await ProjectKeyService.revoke_project_key(
+    # 4. Delete key
+    deleted = await ProjectKeyService.delete_project_key(
         db=db, user_id=test_user_id, key_id=created.id
     )
-    assert revoked.status == "revoked"
+    assert deleted.id == created.id
 
-    # 5. Authenticating revoked key raises UnauthorizedException
+    # 5. Authenticating deleted key raises UnauthorizedException
     with pytest.raises(UnauthorizedException):
         await ProjectKeyService.authenticate_api_key(db=db, raw_key=created.raw_key)
 

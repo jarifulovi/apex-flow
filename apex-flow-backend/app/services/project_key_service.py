@@ -84,12 +84,12 @@ class ProjectKeyService:
         return list(result.scalars().all())
 
     @staticmethod
-    async def revoke_project_key(
+    async def delete_project_key(
         db: AsyncSession,
         user_id: uuid.UUID,
         key_id: uuid.UUID,
     ) -> ProjectKey:
-        """Revokes a project key by ID."""
+        """Permanently deletes a project key by ID."""
         query = select(ProjectKey).where(
             ProjectKey.id == key_id,
             ProjectKey.user_id == user_id,
@@ -100,7 +100,8 @@ class ProjectKeyService:
         if not key:
             raise EntityNotFoundException("ProjectKey", key_id)
 
-        key.status = "revoked"
+        await db.delete(key)
         await db.commit()
         return key
+
 
