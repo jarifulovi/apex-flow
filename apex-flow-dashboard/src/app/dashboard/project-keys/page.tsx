@@ -49,9 +49,6 @@ export default function ProjectKeysPage() {
 
   const handleDeleteKey = async (keyId: string) => {
     if (!accessToken) return;
-    if (!confirm("Are you sure you want to permanently delete this project key? SDK workers using this key will immediately lose access.")) {
-      return;
-    }
     try {
       await deleteProjectKey(accessToken, keyId);
       await loadKeys();

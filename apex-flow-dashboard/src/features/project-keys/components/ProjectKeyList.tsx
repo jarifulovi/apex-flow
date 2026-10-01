@@ -4,12 +4,25 @@ import { useState } from "react";
 import { KeyRound, Copy, Check, ShieldOff, Plus, Clock, Trash2, X, AlertTriangle } from "lucide-react";
 import type { ProjectKey, ProjectKeyCreated } from "@/features/project-keys/api";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
+
 const STATUS_CONFIG: Record<
   ProjectKey["status"],
   { label: string; className: string; dot: string }
 > = {
-  active:  { label: "Active",  className: "status-badge status-badge--completed", dot: "status-dot--completed" },
-  revoked: { label: "Revoked", className: "status-badge status-badge--failed",    dot: "status-dot--failed" },
+  active: { label: "Active", className: "status-badge status-badge--completed", dot: "status-dot--completed" },
+  revoked: { label: "Revoked", className: "status-badge status-badge--failed", dot: "status-dot--failed" },
 };
 
 function CopyButton({ text }: { text: string }) {
@@ -86,13 +99,34 @@ export function ProjectKeyList({
               </div>
 
               {onDelete && (
-                <button
-                  onClick={() => onDelete(key.id)}
-                  className="icon-btn hover:text-red-400 ml-2"
-                  title="Delete key"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <AlertDialog>
+                  <AlertDialogTrigger
+                    className="icon-btn hover:text-red-400 ml-2"
+                    title="Delete key"
+                    render={<button />}
+                  >
+                    <Trash2 size={14} />
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete the project key
+                        <strong className="text-white ml-1">"{key.name}"</strong>
+                        and instantly break any SDK workers using it.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => onDelete(key.id)}
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        Delete Key
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
             </div>
           </div>
