@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { KeyRound, Copy, Check, ShieldOff, Plus, Clock, Trash2, X, AlertTriangle } from "lucide-react";
-import type { ProjectKey, ProjectKeyCreated } from "../api";
+import type { ProjectKey, ProjectKeyCreated } from "@/features/project-keys/api";
 
 const STATUS_CONFIG: Record<
   ProjectKey["status"],

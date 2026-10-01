@@ -15,6 +15,7 @@ import {
   ProjectKeyList,
   CreateKeyModal,
 } from "@/features/project-keys/components/ProjectKeyList";
+import { SDKQuickstart } from "@/features/project-keys/components/SDKQuickstart";
 
 export default function ProjectKeysPage() {
   const { accessToken } = useAuth();
@@ -77,7 +78,7 @@ export default function ProjectKeysPage() {
         }
       />
 
-      <div className="page-content">
+      <div className="page-content flex flex-col gap-6">
         <div className="info-banner">
           <ShieldCheck size={16} className="text-violet-400 shrink-0" />
           <p className="info-banner-text">
@@ -103,6 +104,11 @@ export default function ProjectKeysPage() {
           ) : (
             <ProjectKeyList keys={keys} onRevoke={handleRevokeKey} />
           )}
+        </section>
+
+        {/* SDK & Worker Quickstart Code Snippets */}
+        <section aria-label="SDK Quickstart">
+          <SDKQuickstart />
         </section>
       </div>
 

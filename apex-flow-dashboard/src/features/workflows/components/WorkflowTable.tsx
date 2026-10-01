@@ -1,6 +1,6 @@
 import { GitBranch, Clock, CheckCircle2, AlertTriangle, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import type { Workflow } from "../api";
+import type { Workflow } from "@/features/workflows/api";
 
 const STATUS_CONFIG: Record<
   Workflow["status"],

@@ -6,7 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import type { WorkflowStep } from "../api";
+import type { WorkflowStep } from "@/features/steps/api";
 
 const STATUS_CONFIG: Record<
   WorkflowStep["status"],
