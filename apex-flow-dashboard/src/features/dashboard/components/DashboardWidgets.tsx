@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
   Activity,
   Loader2,
+  Cpu,
 } from "lucide-react";
 import Link from "next/link";
 import type { DashboardStats, ActivityItem } from "@/features/dashboard/api";
@@ -44,6 +45,15 @@ export function StatCards({ stats }: { stats: DashboardStats }) {
       href: "/dashboard/workflows",
     },
     {
+      id: "stat-workers-active",
+      label: "Active Workers",
+      value: stats.activeWorkersCount ?? 0,
+      icon: Cpu,
+      color: "cyan",
+      hint: "Live polling SDK workers",
+      href: "/dashboard/workers",
+    },
+    {
       id: "stat-steps-active",
       label: "Active Steps",
       value: stats.activeSteps,
@@ -59,15 +69,6 @@ export function StatCards({ stats }: { stats: DashboardStats }) {
       icon: CheckCircle2,
       color: "emerald",
       hint: "Successfully processed",
-      href: "/dashboard/steps",
-    },
-    {
-      id: "stat-steps-failed",
-      label: "Failed Steps",
-      value: stats.failedSteps,
-      icon: AlertTriangle,
-      color: "red",
-      hint: "Require attention",
       href: "/dashboard/steps",
     },
   ];
@@ -131,8 +132,9 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
 export function QuickNav() {
   const links = [
     { href: "/dashboard/workflows",   label: "Workflows",    desc: "Browse and inspect workflow runs", icon: GitBranch, color: "violet" },
-    { href: "/dashboard/steps",       label: "Steps",        desc: "Monitor step execution and errors", icon: Footprints, color: "cyan" },
-    { href: "/dashboard/project-keys", label: "Project Keys", desc: "Manage SDK worker authentication",  icon: KeyRound,   color: "amber" },
+    { href: "/dashboard/workers",     label: "Workers",      desc: "Connected SDK workers status",     icon: Cpu,       color: "cyan" },
+    { href: "/dashboard/steps",       label: "Steps",        desc: "Monitor step execution queues",    icon: Footprints, color: "amber" },
+    { href: "/dashboard/project-keys", label: "Project Keys", desc: "Manage worker authentication",    icon: KeyRound,   color: "violet" },
   ];
 
   return (

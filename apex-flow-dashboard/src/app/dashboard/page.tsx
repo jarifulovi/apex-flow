@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Header } from "@/components/shared/Header";
 import { TrendingUp, Activity, Loader2 } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
+import { useProject } from "@/features/projects/context";
 import {
   fetchDashboardOverview,
   type DashboardStats,
@@ -17,6 +18,7 @@ import {
 
 export default function DashboardPage() {
   const { accessToken } = useAuth();
+  const { currentProject } = useProject();
   const [data, setData] = useState<{
     stats: DashboardStats;
     activities: ActivityItem[];
@@ -27,6 +29,7 @@ export default function DashboardPage() {
       completedSteps: 0,
       failedSteps: 0,
       activeKeysCount: 0,
+      activeWorkersCount: 0,
     },
     activities: [],
   });
@@ -36,7 +39,7 @@ export default function DashboardPage() {
     if (!accessToken) return;
     try {
       setLoading(true);
-      const res = await fetchDashboardOverview(accessToken);
+      const res = await fetchDashboardOverview(accessToken, currentProject?.id);
       setData({
         stats: res.stats,
         activities: res.activities,
@@ -46,7 +49,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, currentProject?.id]);
 
   useEffect(() => {
     loadDashboard();
@@ -56,7 +59,7 @@ export default function DashboardPage() {
     <div className="dashboard-page">
       <Header
         title="Overview"
-        subtitle="Monitor your workflows and orchestration control plane"
+        subtitle={`Telemetry & control plane monitoring for ${currentProject?.name || "your project"}`}
       />
 
       {loading ? (

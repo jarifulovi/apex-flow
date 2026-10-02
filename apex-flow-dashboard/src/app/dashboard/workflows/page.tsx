@@ -2,16 +2,19 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Header } from "@/components/shared/Header";
-import { GitBranch, Loader2 } from "lucide-react";
+import { GitBranch, Loader2, RefreshCw } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
+import { useProject } from "@/features/projects/context";
 import { getWorkflows, type Workflow } from "@/features/workflows/api";
 import {
   WorkflowTable,
   WorkflowStatusBar,
 } from "@/features/workflows/components/WorkflowTable";
+import { Button } from "@/components/ui/button";
 
 export default function WorkflowsPage() {
   const { accessToken } = useAuth();
+  const { currentProject } = useProject();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,14 +22,14 @@ export default function WorkflowsPage() {
     if (!accessToken) return;
     try {
       setLoading(true);
-      const data = await getWorkflows(accessToken);
+      const data = await getWorkflows(accessToken, currentProject?.id);
       setWorkflows(data);
     } catch (err) {
       console.error("Failed to load workflows:", err);
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, currentProject?.id]);
 
   useEffect(() => {
     loadWorkflows();
@@ -35,8 +38,19 @@ export default function WorkflowsPage() {
   return (
     <div className="dashboard-page">
       <Header
-        title="Workflows"
-        subtitle="All registered workflow execution runs across your system"
+        title="Workflow Execution Runs"
+        subtitle={`Track workflow execution history and telemetry for ${currentProject?.name || "your project"}`}
+        actions={
+          <Button
+            onClick={loadWorkflows}
+            variant="outline"
+            size="sm"
+            className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs gap-1.5"
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            <span>Refresh</span>
+          </Button>
+        }
       />
 
       <div className="page-content">
@@ -46,7 +60,7 @@ export default function WorkflowsPage() {
           <div className="dashboard-section-header">
             <GitBranch size={15} className="section-icon" />
             <h2 id="workflows-table-heading" className="dashboard-section-title">
-              All Workflows
+              Workflow Runs
               <span className="section-count">{workflows.length}</span>
             </h2>
           </div>

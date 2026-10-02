@@ -1,6 +1,6 @@
-import { GitBranch, Clock, CheckCircle2, AlertTriangle, ChevronRight } from "lucide-react";
+import { GitBranch, Clock, CheckCircle2, AlertTriangle, ChevronRight, Timer } from "lucide-react";
 import Link from "next/link";
-import type { Workflow } from "@/features/workflows/api";
+import { formatDurationMs, type Workflow } from "@/features/workflows/api";
 
 const STATUS_CONFIG: Record<
   Workflow["status"],
@@ -37,16 +37,19 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
       <table className="data-table">
         <thead>
           <tr>
-            <th>Name</th>
+            <th>Workflow Name</th>
             <th>Status</th>
+            <th>Duration</th>
             <th>Steps</th>
-            <th>Updated</th>
+            <th>Created</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {workflows.map((wf) => {
             const cfg = STATUS_CONFIG[wf.status];
+            const name = wf.workflow_name || (wf.metadata?.name as string) || `Workflow #${wf.id.substring(0, 8)}`;
+            const duration = formatDurationMs(wf.started_at || wf.created_at, wf.completed_at);
             return (
               <tr key={wf.id}>
                 <td>
@@ -55,9 +58,7 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
                       <GitBranch size={13} />
                     </div>
                     <div>
-                      <p className="table-name font-mono">
-                        {(wf.metadata?.name as string) || `Workflow #${wf.id.substring(0, 8)}`}
-                      </p>
+                      <p className="table-name font-mono">{name}</p>
                       <p className="table-meta">ID: {wf.id}</p>
                     </div>
                   </div>
@@ -69,16 +70,22 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
                   </span>
                 </td>
                 <td>
+                  <span className="flex items-center gap-1.5 text-xs text-zinc-300 font-mono">
+                    <Timer size={12} className="text-zinc-500" />
+                    {duration}
+                  </span>
+                </td>
+                <td>
                   <span className="table-steps">{wf.steps_count ?? 0} steps</span>
                 </td>
                 <td>
-                  <span className="table-date">{formatDate(wf.updated_at)}</span>
+                  <span className="table-date">{formatDate(wf.created_at)}</span>
                 </td>
                 <td>
                   <Link
                     href={`/dashboard/workflows/${wf.id}`}
                     className="table-action-btn"
-                    aria-label={`View workflow ${wf.metadata?.name}`}
+                    aria-label={`View workflow ${name}`}
                   >
                     <ChevronRight size={15} />
                   </Link>
@@ -94,7 +101,9 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
 
 export function WorkflowStatusBar({ workflows }: { workflows: Workflow[] }) {
   const counts = { pending: 0, running: 0, completed: 0, failed: 0 };
-  for (const wf of workflows) counts[wf.status]++;
+  for (const wf of workflows) {
+    if (counts[wf.status] !== undefined) counts[wf.status]++;
+  }
 
   const items = [
     { label: "Pending",   value: counts.pending,   icon: Clock,          cls: "text-amber-400" },

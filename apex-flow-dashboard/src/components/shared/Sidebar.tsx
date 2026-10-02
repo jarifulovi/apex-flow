@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   GitBranch,
   Footprints,
+  Cpu,
   KeyRound,
   Settings,
   LogOut,
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/workflows", label: "Workflows", icon: GitBranch },
   { href: "/dashboard/steps", label: "Steps", icon: Footprints },
+  { href: "/dashboard/workers", label: "Workers", icon: Cpu },
   { href: "/dashboard/project-keys", label: "Project Keys", icon: KeyRound },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];

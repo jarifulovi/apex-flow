@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Header } from "@/components/shared/Header";
 import { KeyRound, ShieldCheck, Plus, Loader2 } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
+import { useProject } from "@/features/projects/context";
 import {
   getProjectKeys,
   createProjectKey,
@@ -19,6 +20,7 @@ import { SDKQuickstart } from "@/features/project-keys/components/SDKQuickstart"
 
 export default function ProjectKeysPage() {
   const { accessToken } = useAuth();
+  const { currentProject } = useProject();
   const [keys, setKeys] = useState<ProjectKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,14 +29,14 @@ export default function ProjectKeysPage() {
     if (!accessToken) return;
     try {
       setLoading(true);
-      const data = await getProjectKeys(accessToken);
+      const data = await getProjectKeys(accessToken, currentProject?.id);
       setKeys(data);
     } catch (err) {
       console.error("Failed to load project keys:", err);
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, currentProject?.id]);
 
   useEffect(() => {
     loadKeys();
@@ -42,7 +44,7 @@ export default function ProjectKeysPage() {
 
   const handleCreateKey = async (name: string): Promise<ProjectKeyCreated> => {
     if (!accessToken) throw new Error("Not authenticated");
-    const created = await createProjectKey(accessToken, name);
+    const created = await createProjectKey(accessToken, name, currentProject?.id);
     await loadKeys();
     return created;
   };
@@ -63,7 +65,7 @@ export default function ProjectKeysPage() {
     <div className="dashboard-page">
       <Header
         title="Project Keys"
-        subtitle="API keys used to authenticate your SDK workers against the backend"
+        subtitle={`API keys for SDK workers under ${currentProject?.name || "your project"}`}
         actions={
           <button
             onClick={() => setModalOpen(true)}
@@ -88,7 +90,7 @@ export default function ProjectKeysPage() {
           <div className="dashboard-section-header">
             <KeyRound size={15} className="section-icon" />
             <h2 id="keys-heading" className="dashboard-section-title">
-              Your Keys
+              Project Keys
               <span className="section-count">{activeCount} active</span>
             </h2>
           </div>

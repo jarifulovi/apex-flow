@@ -2,19 +2,24 @@ import { fetchWithAuth } from "@/lib/api";
 
 export interface WorkflowStep {
   id: string;
-  workflow_id: string;
+  workflow_run_id: string;
   step_name: string;
   status: "queued" | "running" | "success" | "failed";
   attempt_count: number;
+  max_attempts: number;
+  locked_until?: string | null;
   input_payload: Record<string, unknown>;
   output_payload: Record<string, unknown>;
   error_message: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export async function getSteps(
   token: string,
+  projectId?: string,
   statusFilter?: string,
   limit = 50,
   offset = 0
@@ -23,6 +28,9 @@ export async function getSteps(
     limit: limit.toString(),
     offset: offset.toString(),
   });
+  if (projectId) {
+    query.set("project_id", projectId);
+  }
   if (statusFilter && statusFilter !== "all") {
     query.set("status", statusFilter);
   }

@@ -2,6 +2,7 @@ import { fetchWithAuth } from "@/lib/api";
 
 export interface ProjectKey {
   id: string;
+  project_id: string;
   name: string;
   key_prefix: string;
   status: "active" | "revoked";
@@ -13,14 +14,19 @@ export interface ProjectKeyCreated extends ProjectKey {
   raw_key: string;
 }
 
-export async function getProjectKeys(token: string): Promise<ProjectKey[]> {
-  return fetchWithAuth<ProjectKey[]>("/api/v1/keys", token);
+export async function getProjectKeys(token: string, projectId?: string): Promise<ProjectKey[]> {
+  const query = projectId ? `?project_id=${projectId}` : "";
+  return fetchWithAuth<ProjectKey[]>(`/api/v1/keys${query}`, token);
 }
 
-export async function createProjectKey(token: string, name: string): Promise<ProjectKeyCreated> {
+export async function createProjectKey(
+  token: string,
+  name: string,
+  projectId?: string
+): Promise<ProjectKeyCreated> {
   return fetchWithAuth<ProjectKeyCreated>("/api/v1/keys", token, {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, project_id: projectId }),
   });
 }
 

@@ -1,3 +1,5 @@
+import React, { useState } from "react";
+import Link from "next/link";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -5,8 +7,11 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
+  Timer,
+  Lock,
 } from "lucide-react";
 import type { WorkflowStep } from "@/features/steps/api";
+import { formatDurationMs } from "@/features/workflows/api";
 
 const STATUS_CONFIG: Record<
   WorkflowStep["status"],
@@ -17,8 +22,6 @@ const STATUS_CONFIG: Record<
   success: { label: "Success", className: "status-badge status-badge--completed", dot: "status-dot--completed", icon: CheckCircle2 },
   failed:  { label: "Failed",  className: "status-badge status-badge--failed",    dot: "status-dot--failed",    icon: AlertTriangle },
 };
-
-import React, { useState } from "react";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString("en-US", {
@@ -31,7 +34,7 @@ function formatDate(iso: string) {
 
 function PayloadCell({ payload }: { payload: Record<string, unknown> }) {
   const [open, setOpen] = useState(false);
-  const isEmpty = Object.keys(payload).length === 0;
+  const isEmpty = !payload || Object.keys(payload).length === 0;
   if (isEmpty) return <span className="table-date">—</span>;
   return (
     <div className="payload-cell">
@@ -68,9 +71,10 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
       <table className="data-table">
         <thead>
           <tr>
-            <th>Step</th>
-            <th>Workflow</th>
+            <th>Step Name</th>
+            <th>Workflow Run</th>
             <th>Status</th>
+            <th>Duration</th>
             <th>Attempts</th>
             <th>Output</th>
             <th>Error</th>
@@ -79,8 +83,12 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
         </thead>
         <tbody>
           {steps.map((step) => {
-            const cfg = STATUS_CONFIG[step.status];
+            const cfg = STATUS_CONFIG[step.status] || STATUS_CONFIG.queued;
             const Icon = cfg.icon;
+            const wfRunId = step.workflow_run_id || (step as any).workflow_id || "";
+            const duration = formatDurationMs(step.started_at || step.created_at, step.completed_at);
+            const isLocked = step.locked_until && new Date(step.locked_until).getTime() > Date.now();
+
             return (
               <tr key={step.id}>
                 <td>
@@ -88,11 +96,23 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
                     <div className={`table-icon ${step.status === "failed" ? "table-icon--red" : step.status === "success" ? "table-icon--emerald" : "table-icon--violet"}`}>
                       <Icon size={13} className={step.status === "running" ? "animate-spin" : ""} />
                     </div>
-                    <p className="table-name">{step.step_name}</p>
+                    <div>
+                      <p className="table-name font-mono">{step.step_name}</p>
+                      {isLocked && (
+                        <span className="text-[10px] text-amber-400 font-mono flex items-center gap-1">
+                          <Lock size={10} /> Locked by worker
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </td>
                 <td>
-                  <span className="table-meta">#{step.workflow_id.slice(0, 8)}</span>
+                  <Link
+                    href={`/dashboard/workflows/${wfRunId}`}
+                    className="table-meta font-mono hover:text-violet-300 underline underline-offset-2"
+                  >
+                    #{wfRunId.slice(0, 8)}
+                  </Link>
                 </td>
                 <td>
                   <span className={cfg.className}>
@@ -101,7 +121,15 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
                   </span>
                 </td>
                 <td>
-                  <span className="table-steps">{step.attempt_count}</span>
+                  <span className="flex items-center gap-1.5 text-xs text-zinc-300 font-mono">
+                    <Timer size={12} className="text-zinc-500" />
+                    {duration}
+                  </span>
+                </td>
+                <td>
+                  <span className="table-steps font-mono">
+                    {step.attempt_count} / {step.max_attempts || 3}
+                  </span>
                 </td>
                 <td>
                   <PayloadCell payload={step.output_payload} />
@@ -109,7 +137,7 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
                 <td>
                   {step.error_message ? (
                     <span className="table-error" title={step.error_message}>
-                      {step.error_message.slice(0, 40)}…
+                      {step.error_message.slice(0, 35)}…
                     </span>
                   ) : (
                     <span className="table-date">—</span>

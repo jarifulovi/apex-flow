@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Bell, CheckCircle2, ShieldAlert, X } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/features/auth/hooks";
+import { ProjectSelector } from "@/features/projects/components/ProjectSelector";
 
 interface HeaderProps {
   title: string;
@@ -42,9 +43,12 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
 
   return (
     <header className="dashboard-header">
-      <div className="dashboard-header-left">
-        <h1 className="dashboard-header-title">{title}</h1>
-        {subtitle && <p className="dashboard-header-subtitle">{subtitle}</p>}
+      <div className="dashboard-header-left flex items-center gap-4">
+        <ProjectSelector />
+        <div>
+          <h1 className="dashboard-header-title">{title}</h1>
+          {subtitle && <p className="dashboard-header-subtitle">{subtitle}</p>}
+        </div>
       </div>
       <div className="dashboard-header-right">
         {actions && <div className="header-actions">{actions}</div>}
