@@ -43,14 +43,12 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
 
   return (
     <header className="dashboard-header">
-      <div className="dashboard-header-left flex items-center gap-4">
-        <ProjectSelector />
-        <div>
-          <h1 className="dashboard-header-title">{title}</h1>
-          {subtitle && <p className="dashboard-header-subtitle">{subtitle}</p>}
-        </div>
+      <div className="dashboard-header-left">
+        <h1 className="dashboard-header-title">{title}</h1>
+        {subtitle && <p className="dashboard-header-subtitle">{subtitle}</p>}
       </div>
       <div className="dashboard-header-right">
+        <ProjectSelector />
         {actions && <div className="header-actions">{actions}</div>}
 
         <div className="relative">

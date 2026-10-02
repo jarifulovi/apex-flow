@@ -62,7 +62,7 @@ export function ProjectSelector() {
       </button>
 
       {dropdownOpen && (
-        <div className="absolute left-0 mt-1.5 w-64 bg-[#161620] border border-white/10 rounded-xl shadow-2xl p-1.5 z-50 animate-in fade-in slide-in-from-top-1">
+        <div className="absolute right-0 mt-1.5 w-64 bg-[#161620] border border-white/10 rounded-xl shadow-2xl p-1.5 z-50 animate-in fade-in slide-in-from-top-1">
           <div className="px-2.5 py-1.5 mb-1 border-b border-white/10 flex items-center justify-between">
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
               Projects ({projects.length})
