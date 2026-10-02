@@ -14,7 +14,7 @@ from app.schemas.workflow import (
     WorkflowDetailResponse,
     WorkflowResponse,
 )
-from app.services.workflow_service import WorkflowService
+from app.services.workflows import WorkflowService
 
 router = APIRouter()
 

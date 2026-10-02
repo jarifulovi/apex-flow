@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import UnauthorizedException, decode_supabase_jwt
 from app.schemas.project import ProjectKeyContext
-from app.services.project_key_service import ProjectKeyService
+from app.services.projects import ProjectKeyService
 
 
 async def get_current_project_key_context(

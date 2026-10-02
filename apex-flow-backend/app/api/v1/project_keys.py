@@ -10,7 +10,7 @@ from app.schemas.project_key import (
     ProjectKeyCreatedResponse,
     ProjectKeyResponse,
 )
-from app.services.project_key_service import ProjectKeyService
+from app.services.projects import ProjectKeyService
 
 router = APIRouter()
 

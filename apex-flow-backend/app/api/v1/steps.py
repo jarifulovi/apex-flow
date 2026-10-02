@@ -15,7 +15,7 @@ from app.schemas.step import (
     WorkflowStepCreate,
     WorkflowStepResponse,
 )
-from app.services.step_service import StepService
+from app.services.steps import QueueService, StepService
 
 router = APIRouter()
 
@@ -67,7 +67,7 @@ async def poll_queued_step(
     Supports targeted step_names filtering, lease locking, and worker heartbeat updates.
     Requires X-ApexFlow-Project-Key header.
     """
-    step = await StepService.poll_next_step(
+    step = await QueueService.poll_next_step(
         db=db, project_id=key_ctx.project_id, payload=payload
     )
     if not step:

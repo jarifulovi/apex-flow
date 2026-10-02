@@ -10,7 +10,7 @@ from app.api.deps import (
 from app.core.database import get_db
 from app.schemas.project import ProjectKeyContext
 from app.schemas.worker import WorkerHeartbeatRequest, WorkerResponse
-from app.services.worker_service import WorkerService
+from app.services.workers import WorkerService
 
 router = APIRouter()
 

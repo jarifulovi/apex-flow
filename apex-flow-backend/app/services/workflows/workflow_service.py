@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from app.core.exceptions import EntityNotFoundException
 from app.models.workflow_run import WorkflowRun
 from app.schemas.workflow import WorkflowCreate
-from app.services.project_service import ProjectService
+from app.services.projects.project_service import ProjectService
 
 
 class WorkflowService:

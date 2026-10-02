@@ -10,7 +10,7 @@ from app.core.security import generate_project_key, hash_api_key
 from app.models.project_key import ProjectKey
 from app.schemas.project import ProjectKeyContext
 from app.schemas.project_key import ProjectKeyCreate, ProjectKeyCreatedResponse
-from app.services.project_service import ProjectService
+from app.services.projects.project_service import ProjectService
 
 
 class ProjectKeyService:
