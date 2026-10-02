@@ -37,7 +37,7 @@ class WorkflowService:
         )
         db.add(workflow_run)
         await db.commit()
-        await db.refresh(workflow_run, ["steps"])
+        await db.refresh(workflow_run)
         return workflow_run
 
     @staticmethod

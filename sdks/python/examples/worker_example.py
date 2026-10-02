@@ -1,6 +1,5 @@
 import asyncio
 import os
-import uuid
 import sys
 from dotenv import load_dotenv
 
@@ -12,43 +11,66 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from apex_flow_sdk import ApexFlowClient, WorkflowContext
 
-# Initialize the client. 
-# It will automatically pick up APEXFLOW_PROJECT_KEY and APEXFLOW_BASE_URL from the environment,
-# or you can pass them explicitly:
+# Initialize client
 client = ApexFlowClient(
     base_url=os.getenv("APEXFLOW_BASE_URL", "http://127.0.0.1:8000"),
-    project_key=os.getenv("APEXFLOW_PROJECT_KEY")
+    project_key=os.getenv("APEXFLOW_PROJECT_KEY"),
+    worker_name="lead-processing-worker",
 )
 
-@client.workflow(name="hello_world_workflow")
-async def hello_world(ctx: WorkflowContext, name: str):
-    print(f"Executing hello_world workflow for: {name}")
-    
-    # You can imagine step logic going here
-    # e.g., result = await ctx.step(some_task, name)
-    
-    return f"Hello, {name}!"
+
+@client.workflow(name="process-lead-ai")
+async def process_lead_workflow(ctx: WorkflowContext, user_input: dict):
+    print(f"\n⚡ Executing process-lead-ai workflow run: {ctx.workflow_run_id}")
+
+    # Step 1: Extract lead information
+    extracted_data = await ctx.step(
+        "extract-lead-info",
+        lambda: {"lead_name": "Alice Developer", "company": "ApexTech", "email": "alice@example.com"},
+        retries=3,
+    )
+    print(f"✅ Step 1 complete: Extracted lead '{extracted_data['lead_name']}'")
+
+    # Step 2: Create CRM Record
+    crm_id = await ctx.step(
+        "create-crm-record",
+        lambda: {"crm_id": f"CRM-{extracted_data['company'].upper()}-99"},
+        retries=3,
+    )
+    print(f"✅ Step 2 complete: Created CRM record '{crm_id['crm_id']}'")
+
+    # Step 3: Send Confirmation Email
+    confirmation = await ctx.step(
+        "send-welcome-email",
+        lambda: {"status": "sent", "recipient": extracted_data["email"]},
+        retries=2,
+    )
+    print(f"✅ Step 3 complete: Confirmation email sent to {confirmation['recipient']}")
+
+    return {"status": "completed", "crm_id": crm_id["crm_id"]}
+
 
 async def main():
-    print("--- ApexFlow Python SDK Example ---")
-    
-    # Example: Triggering a workflow programmatically
-    try:
-        user_id = uuid.uuid4()
-        print(f"Triggering workflow for user: {user_id}")
-        workflow_id = await client.trigger_workflow("hello_world_workflow", user_id)
-        print(f"✅ Workflow triggered successfully. ID: {workflow_id}")
-    except Exception as e:
-        print(f"Failed to trigger workflow. Did you set APEXFLOW_PROJECT_KEY? Error: {e}")
+    print("--- ApexFlow Python SDK Workflow & Worker Example ---")
 
-    print("\nStarting worker loop... (Press Ctrl+C to stop)")
-    # Start the worker to poll for tasks from the backend
     try:
-        await client.start_worker(poll_interval=2.0)
-    except KeyboardInterrupt:
-        print("Worker stopped.")
+        print("Triggering workflow 'process-lead-ai'...")
+        workflow_run_id = await client.trigger_workflow(
+            name="process-lead-ai",
+            metadata={"source": "example_script", "env": "development"},
+        )
+        print(f"✅ Workflow run triggered successfully. Run ID: {workflow_run_id}")
+
+        # Execute workflow instance locally
+        ctx = WorkflowContext(workflow_run_id=workflow_run_id, client=client)
+        result = await process_lead_workflow(ctx, {"lead_raw_input": "Alice from ApexTech"})
+        print(f"\n🎉 Workflow Execution Finished! Final Result: {result}")
+
+    except Exception as e:
+        print(f"⚠️ Error running workflow: {e}")
     finally:
         await client.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

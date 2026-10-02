@@ -8,13 +8,45 @@ from apex_flow_sdk.core.exceptions import NonRetryableError, StepFailedError
 class WorkflowContext:
     """
     Workflow execution context passed into @client.workflow functions.
-    Handles step queueing, state memoization, local retries, and control plane reporting.
+    Handles step queueing, durable state checkpointing, retries, and control plane reporting.
     """
 
-    def __init__(self, workflow_id: uuid.UUID, client: Any):
-        self.workflow_id = workflow_id
+    def __init__(self, workflow_run_id: uuid.UUID, client: Any, store_payloads: bool = True):
+        self.workflow_run_id = workflow_run_id
+        self.workflow_id = workflow_run_id  # Alias for backward compatibility
         self.client = client
+        self.store_payloads = store_payloads
         self.step_cache: Dict[str, Any] = {}
+        self.completed_checkpoints: Dict[str, Dict[str, Any]] = {}
+        self.active_step_ids: Dict[str, str] = {}
+        self._checkpoints_loaded = False
+
+    async def _fetch_checkpoints(self):
+        """Fetch existing step execution checkpoints and active step IDs from the control plane."""
+        if self._checkpoints_loaded:
+            return
+        try:
+            res = await self.client.http_client.get(
+                f"{self.client.base_url}/api/v1/workflows/{self.workflow_run_id}"
+            )
+            if res.status_code == 200:
+                run_detail = res.json()
+                for step_info in run_detail.get("steps", []):
+                    step_name = step_info.get("step_name")
+                    status = step_info.get("status")
+                    step_id = step_info.get("id")
+
+                    if step_name and step_id:
+                        self.active_step_ids[step_name] = step_id
+
+                    if status == "success":
+                        out_payload = step_info.get("output_payload", {})
+                        val = out_payload.get("result", out_payload) if isinstance(out_payload, dict) else out_payload
+                        self.completed_checkpoints[step_name] = val
+        except Exception:
+            pass  # Fallback to local execution if checkpoint query fails
+        finally:
+            self._checkpoints_loaded = True
 
     async def step(
         self,
@@ -24,50 +56,65 @@ class WorkflowContext:
         backoff_factor: float = 2.0,
     ) -> Any:
         """
-        Execute a modular workflow step durable with retries & control plane state tracking.
+        Execute a modular workflow step with durable checkpointing, retries, and control plane status tracking.
         """
-        # 1. Check if step output is already cached/memoized locally
+        # 1. Check local in-memory cache first
         if name in self.step_cache:
             return self.step_cache[name]
 
-        # 2. Queue step on control plane
-        step_payload = {
-            "workflow_id": str(self.workflow_id),
-            "step_name": name,
-            "input_payload": {},
-        }
-        res = await self.client.http_client.post(
-            f"{self.client.base_url}/api/v1/steps", json=step_payload
-        )
-        if res.status_code != 201:
-            raise StepFailedError(name, f"Failed to queue step on control plane: {res.text}")
+        # 2. Check control plane durable checkpoints (resuming from last successful step)
+        await self._fetch_checkpoints()
+        if name in self.completed_checkpoints:
+            checkpoint_val = self.completed_checkpoints[name]
+            self.step_cache[name] = checkpoint_val
+            return checkpoint_val
 
-        step_id = res.json()["id"]
+        # 3. Use existing step ID if pre-queued or acquired, otherwise queue step on control plane
+        step_id = self.active_step_ids.get(name)
 
-        # 3. Execute step locally with retry loop
+        if not step_id:
+            step_payload = {
+                "workflow_id": str(self.workflow_run_id),
+                "step_name": name,
+                "input_payload": {},
+                "max_attempts": retries,
+            }
+            res = await self.client.http_client.post(
+                f"{self.client.base_url}/api/v1/steps", json=step_payload
+            )
+            if res.status_code not in (200, 201):
+                raise StepFailedError(name, f"Failed to queue step on control plane: {res.text}")
+
+            step_id = res.json()["id"]
+            self.active_step_ids[name] = step_id
+
+        # 4. Execute step function locally with retry logic
         last_exception: Optional[Exception] = None
         attempt = 0
 
         while attempt <= retries:
             attempt += 1
             try:
-                # Call local step function
                 if asyncio.iscoroutinefunction(fn):
                     output = await fn()
                 else:
                     output = fn()
 
                 # Report success to control plane
+                output_data = {}
+                if self.store_payloads and output is not None:
+                    output_data = output if isinstance(output, dict) else {"result": output}
+
                 report_payload = {
                     "step_id": step_id,
                     "status": "success",
-                    "output_payload": output if isinstance(output, dict) else {"result": output},
+                    "output_payload": output_data,
                 }
                 await self.client.http_client.post(
                     f"{self.client.base_url}/api/v1/steps/report", json=report_payload
                 )
 
-                # Cache output in memory and return
+                # Cache result and return
                 self.step_cache[name] = output
                 return output
 
@@ -80,7 +127,7 @@ class WorkflowContext:
                     sleep_time = backoff_factor ** (attempt - 1)
                     await asyncio.sleep(sleep_time)
 
-        # 4. Report failure to control plane if all retries exhausted
+        # 5. Report failure to control plane if all attempts exhausted
         error_msg = str(last_exception) if last_exception else "Step execution failed."
         report_payload = {
             "step_id": step_id,
@@ -96,8 +143,6 @@ class WorkflowContext:
         self,
         steps: List[Tuple[str, Callable[[], Any]]],
     ) -> List[Any]:
-        """
-        Execute multiple independent steps concurrently using asyncio.gather.
-        """
+        """Execute multiple independent steps concurrently."""
         tasks = [self.step(name, fn) for name, fn in steps]
         return await asyncio.gather(*tasks)

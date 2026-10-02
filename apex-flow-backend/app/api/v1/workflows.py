@@ -19,7 +19,7 @@ from app.services.workflows import WorkflowService
 router = APIRouter()
 
 
-@router.post("/workflows", response_model=WorkflowDetailResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/workflows", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
 async def create_workflow(
     payload: WorkflowCreate,
     key_ctx: ProjectKeyContext = Depends(get_current_project_key_context),

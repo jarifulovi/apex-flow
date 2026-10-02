@@ -1,7 +1,7 @@
 import os
 import uuid
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
@@ -51,7 +51,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture(autouse=True)
 def override_get_db_dependency():
     """
-    Autouse fixture that overrides FastAPI get_db dependency in app to yield a fresh session per HTTP request.
+    Autouse fixture overriding FastAPI get_db dependency in app to yield a fresh session per HTTP request.
     """
     async def _get_db_override() -> AsyncGenerator[AsyncSession, None]:
         async with TestAsyncSessionLocal() as session:
@@ -72,7 +72,7 @@ def override_get_db_dependency():
 @pytest_asyncio.fixture
 async def test_user_id(db: AsyncSession) -> AsyncGenerator[uuid.UUID, None]:
     """
-    Pytest fixture providing a valid user_id present in auth.users table for testing FKs.
+    Pytest fixture providing a valid user_id present in auth.users table.
     """
     user_id = uuid.uuid4()
     await db.execute(
@@ -86,23 +86,38 @@ async def test_user_id(db: AsyncSession) -> AsyncGenerator[uuid.UUID, None]:
 
     yield user_id
 
-    # Clean up test user & related workflows
-    await db.execute(text("DELETE FROM project_keys WHERE user_id = :user_id"), {"user_id": user_id})
-    await db.execute(text("DELETE FROM workflows WHERE user_id = :user_id"), {"user_id": user_id})
+    # Clean up test user & related records
+    await db.execute(text("DELETE FROM projects WHERE owner_id = :user_id"), {"user_id": user_id})
     await db.execute(text("DELETE FROM auth.users WHERE id = :user_id"), {"user_id": user_id})
     await db.commit()
 
 
 @pytest_asyncio.fixture
-async def test_project_key(db: AsyncSession, test_user_id: uuid.UUID) -> AsyncGenerator[str, None]:
+async def test_project(db: AsyncSession, test_user_id: uuid.UUID) -> AsyncGenerator[Any, None]:
     """
-    Creates an active ProjectKey record in database for test_user_id and yields the raw API key.
+    Creates a test Project owned by test_user_id.
+    """
+    from app.models.project import Project
+
+    project = Project(owner_id=test_user_id, name="Test Project")
+    db.add(project)
+    await db.commit()
+    await db.refresh(project)
+
+    yield project
+
+
+@pytest_asyncio.fixture
+async def test_project_key(db: AsyncSession, test_project: Any, test_user_id: uuid.UUID) -> AsyncGenerator[str, None]:
+    """
+    Creates an active ProjectKey record for test_project and yields the raw API key.
     """
     from app.schemas.project_key import ProjectKeyCreate
-    from app.services.project_key_service import ProjectKeyService
+    from app.services.projects.project_key_service import ProjectKeyService
 
     created_key = await ProjectKeyService.create_project_key(
-        db=db, user_id=test_user_id, payload=ProjectKeyCreate(name="Test Key")
+        db=db,
+        owner_id=test_user_id,
+        payload=ProjectKeyCreate(name="Test Key", project_id=test_project.id),
     )
     yield created_key.raw_key
-
