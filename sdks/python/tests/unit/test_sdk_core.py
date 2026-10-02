@@ -23,7 +23,7 @@ async def test_sdk_workflow_decorator_and_step_execution():
     client.http_client.post.side_effect = [mock_queue_res, mock_report_res]
 
     workflow_id = uuid.uuid4()
-    ctx = WorkflowContext(workflow_id=workflow_id, client=client)
+    ctx = WorkflowContext(workflow_run_id=workflow_id, client=client)
 
     # Test executing a step
     result = await ctx.step("step-1", lambda: {"result": "success_data"})
@@ -36,7 +36,7 @@ async def test_sdk_workflow_decorator_and_step_execution():
 async def test_sdk_step_memoization():
     client = ApexFlowClient(base_url="http://test")
     workflow_id = uuid.uuid4()
-    ctx = WorkflowContext(workflow_id=workflow_id, client=client)
+    ctx = WorkflowContext(workflow_run_id=workflow_id, client=client)
 
     # Pre-seed cache
     ctx.step_cache["cached-step"] = "cached_value"
@@ -64,7 +64,7 @@ async def test_sdk_parallel_steps():
     ]
 
     workflow_id = uuid.uuid4()
-    ctx = WorkflowContext(workflow_id=workflow_id, client=client)
+    ctx = WorkflowContext(workflow_run_id=workflow_id, client=client)
 
     # Test parallel steps
     results = await ctx.parallel([
