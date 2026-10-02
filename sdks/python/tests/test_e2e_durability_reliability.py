@@ -8,7 +8,13 @@ from sqlalchemy import select, update
 from app.main import app
 from app.models import WorkflowStep
 from conftest import TestAsyncSessionLocal
-from apex_flow_sdk import ApexFlowClient, WorkflowContext
+from apex_flow_sdk import (
+    ApexFlowClient,
+    WorkflowContext,
+    validate_response,
+    NonRetryableError,
+    StepFailedError,
+)
 
 
 @pytest.mark.asyncio
@@ -89,6 +95,84 @@ async def test_step_retry_resilience(test_project_key: str):
     res = await ctx.step("flaky-step", flaky_fn, retries=3, backoff_factor=0.01)
     assert res["result"] == "success_after_retries"
     assert attempt_counter == 3
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_silent_error_detection_and_retry(test_project_key: str):
+    """
+    Test Silent API Error Detection & Retry:
+    API returns silent JSON error `{"success": False}` on attempt 1 & 2.
+    validate_response raises ValueError to trigger exponential backoff retry.
+    Succeeds on attempt 3.
+    """
+    client = ApexFlowClient(base_url="http://test", project_key=test_project_key)
+    client.http_client = AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"X-ApexFlow-Project-Key": test_project_key},
+    )
+
+    run_id = await client.trigger_workflow("silent-error-workflow")
+    ctx = WorkflowContext(workflow_run_id=run_id, client=client)
+
+    attempt_count = 0
+
+    def step_with_silent_error():
+        nonlocal attempt_count
+        attempt_count += 1
+        if attempt_count < 3:
+            # Simulate silent API response that didn't raise Exception
+            raw_response = {"success": False, "error": "Third party rate limited"}
+        else:
+            raw_response = {"success": True, "data": "payment_approved"}
+
+        # validate_response checks {"success": False} and converts to retryable ValueError
+        return validate_response(raw_response)
+
+    res = await ctx.step("silent-api-step", step_with_silent_error, retries=3, backoff_factor=0.01)
+    assert res["success"] is True
+    assert res["data"] == "payment_approved"
+    assert attempt_count == 3
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_non_retryable_error_immediate_abort(test_project_key: str):
+    """
+    Test NonRetryableError Immediate Abort:
+    Step raises NonRetryableError (e.g. 401 Unauthorized via validate_response).
+    Verifies step immediately aborts without attempting remaining retries.
+    """
+    client = ApexFlowClient(base_url="http://test", project_key=test_project_key)
+    client.http_client = AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"X-ApexFlow-Project-Key": test_project_key},
+    )
+
+    run_id = await client.trigger_workflow("fatal-auth-workflow")
+    ctx = WorkflowContext(workflow_run_id=run_id, client=client)
+
+    attempts = 0
+
+    class MockHTTPResponse:
+        status_code = 401
+        text = "Invalid API Auth Token"
+
+    def fatal_auth_fn():
+        nonlocal attempts
+        attempts += 1
+        # validate_response with raise_non_retryable=True raises NonRetryableError
+        return validate_response(MockHTTPResponse(), raise_non_retryable=True)
+
+    with pytest.raises(StepFailedError) as exc_info:
+        await ctx.step("fatal-step", fatal_auth_fn, retries=5, backoff_factor=0.01)
+
+    assert "Fatal HTTP Error 401" in str(exc_info.value)
+    assert attempts == 1  # Aborted immediately on attempt 1 without wasting 5 retries!
 
     await client.close()
 

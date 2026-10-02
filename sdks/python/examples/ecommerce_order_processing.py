@@ -26,7 +26,7 @@ load_dotenv()
 # Add SDK root directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from apex_flow_sdk import ApexFlowClient, WorkflowContext
+from apex_flow_sdk import ApexFlowClient, WorkflowContext, validate_response
 
 # Initialize SDK Client
 BASE_URL = os.getenv("APEXFLOW_BASE_URL", "http://127.0.0.1:8000")
@@ -46,15 +46,21 @@ async def process_order_workflow(ctx: WorkflowContext, order_details: dict):
     order_id = order_details.get("order_id", f"ORD-{uuid.uuid4().hex[:6].upper()}")
     total_amount = order_details.get("amount", 149.99)
 
-    # Step 1: Validate Payment
+    # Step 1: Validate Payment (demonstrating validate_response for silent API error protection)
     async def validate_payment_func():
         print(f"  💳 [Step 1] Validating payment of ${total_amount:.2f} for Order {order_id}...")
         await asyncio.sleep(0.5)  # Simulate payment gateway API latency
-        return {
+
+        raw_gateway_response = {
+            "success": True,
             "payment_status": "SUCCESS",
             "transaction_id": f"TXN-{uuid.uuid4().hex[:8].upper()}",
             "amount_charged": total_amount,
         }
+
+        # Validate response payload against silent API errors (raises ValueError if success=False)
+        validated = validate_response(raw_gateway_response)
+        return validated
 
     payment_res = await ctx.step("validate-payment", validate_payment_func, retries=3)
     print(f"  ✅ [Step 1 Passed] Payment Approved! Txn ID: {payment_res['transaction_id']}")
