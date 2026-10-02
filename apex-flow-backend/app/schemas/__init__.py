@@ -1,4 +1,5 @@
-from app.schemas.auth import UserProfile, SessionResponse
+from app.schemas.auth import SessionResponse, UserProfile
+from app.schemas.project import ProjectCreate, ProjectKeyContext, ProjectResponse
 from app.schemas.project_key import (
     KeyStatus,
     ProjectKeyCreate,
@@ -20,20 +21,22 @@ from app.schemas.workflow import (
 )
 
 __all__ = [
-    "UserProfile",
     "SessionResponse",
-    "WorkflowCreate",
-    "WorkflowUpdate",
-    "WorkflowResponse",
-    "WorkflowDetailResponse",
-    "WorkflowStatus",
-    "WorkflowStepCreate",
-    "StepReportPayload",
-    "StepStatus",
-    "WorkflowStepResponse",
+    "UserProfile",
+    "ProjectCreate",
+    "ProjectKeyContext",
+    "ProjectResponse",
     "KeyStatus",
     "ProjectKeyCreate",
-    "ProjectKeyResponse",
     "ProjectKeyCreatedResponse",
+    "ProjectKeyResponse",
+    "StepReportPayload",
+    "StepStatus",
+    "WorkflowStepCreate",
+    "WorkflowStepResponse",
+    "WorkflowCreate",
+    "WorkflowDetailResponse",
+    "WorkflowResponse",
+    "WorkflowStatus",
+    "WorkflowUpdate",
 ]
-

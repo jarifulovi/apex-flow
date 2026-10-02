@@ -1,18 +1,18 @@
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List
-from sqlalchemy import DateTime, String, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from typing import TYPE_CHECKING, Optional
+from sqlalchemy import DateTime, ForeignKey, String, text
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.step import WorkflowStep
+    from app.models.project import Project
 
 
-class Workflow(Base):
-    __tablename__ = "workflows"
+class Worker(Base):
+    __tablename__ = "workers"
 
     id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -20,22 +20,24 @@ class Workflow(Base):
         default=uuid.uuid4,
         server_default=text("gen_random_uuid()"),
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
+    project_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(
+        String,
         nullable=False,
     )
     status: Mapped[str] = mapped_column(
         String,
         nullable=False,
-        default="pending",
-        server_default=text("'pending'::text"),
+        default="active",
+        server_default=text("'active'::text"),
     )
-    metadata_: Mapped[Dict[str, Any]] = mapped_column(
-        "metadata",
-        JSONB,
-        nullable=False,
-        default=dict,
-        server_default=text("'{}'::jsonb"),
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -49,10 +51,8 @@ class Workflow(Base):
         onupdate=datetime.now,
     )
 
-    # Relationship to workflow steps
-    steps: Mapped[List["WorkflowStep"]] = relationship(
-        "WorkflowStep",
-        back_populates="workflow",
-        cascade="all, delete-orphan",
-        order_by="WorkflowStep.created_at",
+    # Relationship to project
+    project: Mapped["Project"] = relationship(
+        "Project",
+        back_populates="workers",
     )

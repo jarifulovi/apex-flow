@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.workflow import Workflow
+    from app.models.workflow_run import WorkflowRun
 
 
 class WorkflowStep(Base):
@@ -20,9 +20,9 @@ class WorkflowStep(Base):
         default=uuid.uuid4,
         server_default=text("gen_random_uuid()"),
     )
-    workflow_id: Mapped[uuid.UUID] = mapped_column(
+    workflow_run_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("workflows.id", ondelete="CASCADE"),
+        ForeignKey("workflow_runs.id", ondelete="CASCADE"),
         nullable=False,
     )
     step_name: Mapped[str] = mapped_column(
@@ -41,6 +41,16 @@ class WorkflowStep(Base):
         default=0,
         server_default=text("0"),
     )
+    max_attempts: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=3,
+        server_default=text("3"),
+    )
+    locked_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     input_payload: Mapped[Dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
@@ -57,6 +67,14 @@ class WorkflowStep(Base):
         Text,
         nullable=True,
     )
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -69,8 +87,8 @@ class WorkflowStep(Base):
         onupdate=datetime.now,
     )
 
-    # Relationship to parent workflow
-    workflow: Mapped["Workflow"] = relationship(
-        "Workflow",
+    # Relationship to parent workflow run
+    workflow_run: Mapped["WorkflowRun"] = relationship(
+        "WorkflowRun",
         back_populates="steps",
     )

@@ -12,11 +12,12 @@ class KeyStatus(str, Enum):
 
 class ProjectKeyCreate(BaseModel):
     name: str = "Production Key"
+    project_id: Optional[uuid.UUID] = None
 
 
 class ProjectKeyResponse(BaseModel):
     id: uuid.UUID
-    user_id: uuid.UUID
+    project_id: uuid.UUID
     name: str
     key_prefix: str
     status: KeyStatus
