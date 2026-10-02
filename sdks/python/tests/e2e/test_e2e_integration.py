@@ -26,7 +26,7 @@ async def test_e2e_full_workflow_and_worker_pipeline(test_project_key: str):
     assert isinstance(workflow_id, uuid.UUID)
 
     # 3. Create WorkflowContext
-    ctx = WorkflowContext(workflow_id=workflow_id, client=client)
+    ctx = WorkflowContext(workflow_run_id=workflow_id, client=client)
 
     # 4. Define step functions
     async def step_1():
