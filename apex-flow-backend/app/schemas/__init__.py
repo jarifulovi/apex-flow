@@ -7,11 +7,13 @@ from app.schemas.project_key import (
     ProjectKeyResponse,
 )
 from app.schemas.step import (
+    StepPollRequest,
     StepReportPayload,
     StepStatus,
     WorkflowStepCreate,
     WorkflowStepResponse,
 )
+from app.schemas.worker import WorkerHeartbeatRequest, WorkerResponse, WorkerStatus
 from app.schemas.workflow import (
     WorkflowCreate,
     WorkflowDetailResponse,
@@ -30,10 +32,14 @@ __all__ = [
     "ProjectKeyCreate",
     "ProjectKeyCreatedResponse",
     "ProjectKeyResponse",
+    "StepPollRequest",
     "StepReportPayload",
     "StepStatus",
     "WorkflowStepCreate",
     "WorkflowStepResponse",
+    "WorkerHeartbeatRequest",
+    "WorkerResponse",
+    "WorkerStatus",
     "WorkflowCreate",
     "WorkflowDetailResponse",
     "WorkflowResponse",

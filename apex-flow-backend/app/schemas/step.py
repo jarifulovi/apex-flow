@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -18,6 +18,14 @@ class WorkflowStepCreate(BaseModel):
     step_name: str
     input_payload: Optional[Dict[str, Any]] = Field(default_factory=dict)
     max_attempts: int = 3
+
+
+# Schema for worker poll request
+class StepPollRequest(BaseModel):
+    step_names: Optional[List[str]] = None
+    lock_duration_seconds: int = Field(default=300, ge=5, le=3600)
+    worker_id: Optional[uuid.UUID] = None
+    worker_name: Optional[str] = "python-worker"
 
 
 # Payload sent by SDK worker when reporting step execution status
