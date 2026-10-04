@@ -1,11 +1,13 @@
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import EntityNotFoundException
 from app.models.workflow_run import WorkflowRun
+from app.models.step import WorkflowStep
 from app.schemas.workflow import WorkflowCreate
 from app.services.projects.project_service import ProjectService
 
@@ -93,4 +95,75 @@ class WorkflowService:
         if not workflow_run:
             raise EntityNotFoundException("WorkflowRun", workflow_run_id)
 
+        return workflow_run
+
+    @staticmethod
+    async def cancel_workflow_run(
+        db: AsyncSession,
+        workflow_run_id: uuid.UUID,
+        owner_id: Optional[uuid.UUID] = None,
+        project_id: Optional[uuid.UUID] = None,
+    ) -> WorkflowRun:
+        """Cancel an active workflow run and mark pending steps as cancelled."""
+        workflow_run = await WorkflowService.get_workflow_run_by_id(
+            db=db, workflow_run_id=workflow_run_id, owner_id=owner_id, project_id=project_id
+        )
+
+        now = datetime.now(timezone.utc)
+        workflow_run.status = "cancelled"
+        workflow_run.completed_at = now
+
+        # Update child pending steps
+        await db.execute(
+            update(WorkflowStep)
+            .where(
+                WorkflowStep.workflow_run_id == workflow_run_id,
+                WorkflowStep.status.in_(["queued", "running"]),
+            )
+            .values(
+                status="cancelled",
+                locked_until=None,
+                completed_at=now,
+            )
+        )
+
+        await db.commit()
+        await db.refresh(workflow_run)
+        return workflow_run
+
+    @staticmethod
+    async def restart_workflow_run(
+        db: AsyncSession,
+        workflow_run_id: uuid.UUID,
+        owner_id: Optional[uuid.UUID] = None,
+        project_id: Optional[uuid.UUID] = None,
+    ) -> WorkflowRun:
+        """Reset failed or cancelled steps to queued and restart workflow run."""
+        workflow_run = await WorkflowService.get_workflow_run_by_id(
+            db=db, workflow_run_id=workflow_run_id, owner_id=owner_id, project_id=project_id
+        )
+
+        now = datetime.now(timezone.utc)
+        workflow_run.status = "running"
+        workflow_run.completed_at = None
+        workflow_run.started_at = now
+
+        # Reset failed/cancelled child steps to queued
+        await db.execute(
+            update(WorkflowStep)
+            .where(
+                WorkflowStep.workflow_run_id == workflow_run_id,
+                WorkflowStep.status.in_(["failed", "cancelled"]),
+            )
+            .values(
+                status="queued",
+                attempt_count=0,
+                error_message=None,
+                locked_until=None,
+                completed_at=None,
+            )
+        )
+
+        await db.commit()
+        await db.refresh(workflow_run)
         return workflow_run

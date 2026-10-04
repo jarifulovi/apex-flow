@@ -4,14 +4,14 @@ ApexFlow E-Commerce Order Processing Workflow Example
 Demonstrates a multi-step durable order processing pipeline using the Python SDK.
 
 Steps:
-  1. validate-payment         : Reserve funds and verify transaction token
+  1. validate-payment         : Reserve funds and verify transaction token (with retry resilience)
   2. reserve-inventory        : Lock warehouse stock for ordered items
   3. generate-shipping-label  : Create carrier tracking label & dispatch manifest
   4. send-dispatch-email      : Send order confirmation to customer
 
 Run Modes:
-  - Direct Execution (runs steps locally with control-plane checkpoints)
-  - Worker Mode (polls queued steps asynchronously via FOR UPDATE SKIP LOCKED)
+  - Normal Walkthrough: ./run.sh ecom
+  - Failure Simulation: ./run.sh ecom --fail (Demonstrates retries, step failure, and error inspection)
 """
 
 import asyncio
@@ -26,7 +26,10 @@ load_dotenv()
 # Add SDK root directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from apex_flow_sdk import ApexFlowClient, WorkflowContext, validate_response
+from apex_flow_sdk import ApexFlowClient, WorkflowContext, validate_response, NonRetryableError
+
+# Check for failure simulation flag
+SIMULATE_FAILURE = "--fail" in sys.argv or "--simulate-failure" in sys.argv
 
 # Initialize SDK Client
 BASE_URL = os.getenv("APEXFLOW_BASE_URL", "http://127.0.0.1:8000")
@@ -44,34 +47,47 @@ client = ApexFlowClient(
 async def process_order_workflow(ctx: WorkflowContext, order_details: dict):
     print(f"\n📦 [ApexFlow] Processing Order Workflow Run: {ctx.workflow_run_id}")
     order_id = order_details.get("order_id", f"ORD-{uuid.uuid4().hex[:6].upper()}")
-    total_amount = order_details.get("amount", 149.99)
+    total_amount = order_details.get("amount", 289.50)
 
-    # Step 1: Validate Payment (demonstrating validate_response for silent API error protection)
+    payment_attempt = 0
+
+    # Step 1: Validate Payment (demonstrating retries and validate_response)
     async def validate_payment_func():
-        print(f"  💳 [Step 1] Validating payment of ${total_amount:.2f} for Order {order_id}...")
-        await asyncio.sleep(0.5)  # Simulate payment gateway API latency
+        nonlocal payment_attempt
+        payment_attempt += 1
+        print(f"  💳 [Step 1 (Attempt #{payment_attempt})] Validating payment of ${total_amount:.2f} for Order {order_id}...")
+        await asyncio.sleep(0.4)
 
-        raw_gateway_response = {
-            "success": True,
-            "payment_status": "SUCCESS",
-            "transaction_id": f"TXN-{uuid.uuid4().hex[:8].upper()}",
-            "amount_charged": total_amount,
-        }
+        if SIMULATE_FAILURE and payment_attempt == 1:
+            print("  ⚠️ [Step 1 Simulated Failure] Gateway timeout! Triggering SDK retry...")
+            # Returning a silent error structure that validate_response converts to retryable ValueError
+            raw_response = {"success": False, "error": "Gateway Timeout (504)"}
+        else:
+            raw_response = {
+                "success": True,
+                "payment_status": "SUCCESS",
+                "transaction_id": f"TXN-{uuid.uuid4().hex[:8].upper()}",
+                "amount_charged": total_amount,
+            }
 
-        # Validate response payload against silent API errors (raises ValueError if success=False)
-        validated = validate_response(raw_gateway_response)
-        return validated
+        # Validate response payload against silent API errors
+        return validate_response(raw_response)
 
-    payment_res = await ctx.step("validate-payment", validate_payment_func, retries=3)
+    payment_res = await ctx.step("validate-payment", validate_payment_func, retries=3, backoff_factor=0.5)
     print(f"  ✅ [Step 1 Passed] Payment Approved! Txn ID: {payment_res['transaction_id']}")
 
     # Step 2: Reserve Inventory
     async def reserve_inventory_func():
         print(f"  🏭 [Step 2] Locking warehouse inventory for {len(order_details.get('items', []))} items...")
-        await asyncio.sleep(0.5)  # Simulate warehouse database lock
+        await asyncio.sleep(0.4)
+
+        if SIMULATE_FAILURE and order_details.get("force_item_out_of_stock"):
+            print("  ❌ [Step 2 Simulated Fatal Error] SKU OUT_OF_STOCK! Raising NonRetryableError...")
+            raise NonRetryableError("SKU #KB-809 OUT_OF_STOCK: Insufficient units at WH-EAST-04")
+
         return {
             "warehouse_id": "WH-EAST-04",
-            "items_allocated": order_details.get("items", ["Laptop Stand", "USB-C Hub"]),
+            "items_allocated": order_details.get("items", ["Mechanical Keyboard", "Monitor Arm"]),
             "status": "RESERVED",
         }
 
@@ -81,7 +97,7 @@ async def process_order_workflow(ctx: WorkflowContext, order_details: dict):
     # Step 3: Generate Shipping Label
     async def generate_shipping_label_func():
         print(f"  🚚 [Step 3] Generating carrier shipping label for {order_details.get('customer_email')}...")
-        await asyncio.sleep(0.5)  # Simulate carrier API call
+        await asyncio.sleep(0.4)
         return {
             "carrier": "FedEx Express",
             "tracking_number": f"TRK-{uuid.uuid4().hex[:10].upper()}",
@@ -118,6 +134,8 @@ async def process_order_workflow(ctx: WorkflowContext, order_details: dict):
 async def main():
     print("=" * 65)
     print("🚀 ApexFlow E-Commerce Order Processing Workflow Walkthrough")
+    if SIMULATE_FAILURE:
+        print("⚡ SIMULATED FAILURE MODE ACTIVE (--fail)")
     print("=" * 65)
 
     if not PROJECT_KEY:
@@ -131,6 +149,7 @@ async def main():
         "customer_email": "jane.doe@example.com",
         "amount": 289.50,
         "items": ["Ergonomic Mechanical Keyboard", "UltraWide Monitor Arm"],
+        "force_item_out_of_stock": SIMULATE_FAILURE,
     }
 
     try:
@@ -141,7 +160,7 @@ async def main():
             metadata={
                 "order_id": order_payload["order_id"],
                 "customer": order_payload["customer_email"],
-                "channel": "web-storefront",
+                "simulation": "failure" if SIMULATE_FAILURE else "normal",
             },
         )
         print(f"   Registered Control Plane Workflow Run ID: {workflow_run_id}\n")
@@ -160,10 +179,16 @@ async def main():
         print("=" * 65)
 
     except Exception as e:
-        print(f"❌ Workflow Execution Error: {e}")
+        print("\n" + "=" * 65)
+        print(f"❌ WORKFLOW EXECUTION FAILED AS EXPECTED IN SIMULATION MODE!")
+        print(f"   Error Details: {e}")
+        print("   Inspect the error traceback & test 'Restart Run' at:")
+        print("   http://localhost:3000/dashboard/workflows")
+        print("=" * 65)
     finally:
         await client.close()
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+

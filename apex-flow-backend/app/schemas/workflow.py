@@ -12,6 +12,7 @@ class WorkflowStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 # Schema to receive on workflow run creation

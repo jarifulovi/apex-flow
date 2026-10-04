@@ -14,15 +14,21 @@ import {
   ChevronDown,
   ChevronRight,
   ShieldAlert,
+  RotateCcw,
+  Ban,
+  Maximize2,
 } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
 import {
   getWorkflowDetail,
+  cancelWorkflowRun,
+  restartWorkflowRun,
   formatDurationMs,
   type WorkflowDetail,
   type WorkflowStepSummary,
 } from "@/features/workflows/api";
 import { Button } from "@/components/ui/button";
+import { ErrorInspectorModal } from "@/components/shared/ErrorInspectorModal";
 
 const STATUS_CONFIG: Record<
   string,
@@ -33,6 +39,7 @@ const STATUS_CONFIG: Record<
   completed: { label: "Completed", className: "status-badge status-badge--completed", dot: "status-dot--completed", icon: CheckCircle2 },
   success:   { label: "Success",   className: "status-badge status-badge--completed", dot: "status-dot--completed", icon: CheckCircle2 },
   failed:    { label: "Failed",    className: "status-badge status-badge--failed",    dot: "status-dot--failed",    icon: AlertTriangle },
+  cancelled: { label: "Cancelled", className: "status-badge status-badge--failed border-amber-500/30 text-amber-300 bg-amber-950/40", dot: "bg-amber-400", icon: Ban },
   queued:    { label: "Queued",    className: "status-badge status-badge--pending",   dot: "status-dot--pending",   icon: Clock },
 };
 
@@ -66,7 +73,11 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
   const { accessToken } = useAuth();
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Inspector modal state
+  const [selectedErrorStep, setSelectedErrorStep] = useState<{ stepName: string; errorMessage: string } | null>(null);
 
   const loadDetail = useCallback(async () => {
     if (!accessToken || !workflowId) return;
@@ -86,6 +97,32 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
   useEffect(() => {
     loadDetail();
   }, [loadDetail]);
+
+  const handleCancel = async () => {
+    if (!accessToken || !workflowId || actionLoading) return;
+    try {
+      setActionLoading(true);
+      const updated = await cancelWorkflowRun(accessToken, workflowId);
+      setDetail(updated);
+    } catch (err: any) {
+      alert(`Failed to cancel workflow: ${err?.message || err}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    if (!accessToken || !workflowId || actionLoading) return;
+    try {
+      setActionLoading(true);
+      const updated = await restartWorkflowRun(accessToken, workflowId);
+      setDetail(updated);
+    } catch (err: any) {
+      alert(`Failed to restart workflow: ${err?.message || err}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -119,7 +156,21 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
 
   const name = detail.workflow_name || (detail.metadata?.name as string) || `Workflow #${detail.id.substring(0, 8)}`;
   const totalDuration = formatDurationMs(detail.started_at || detail.created_at, detail.completed_at);
-  const statusCfg = STATUS_CONFIG[detail.status] || STATUS_CONFIG.pending;
+
+  // Status display override logic:
+  // If any child step is queued/running and overall status is pending/running, display as "running"
+  const hasRunningOrQueuedSteps = detail.steps.some(
+    (s) => s.status === "queued" || s.status === "running"
+  );
+  const effectiveStatus =
+    hasRunningOrQueuedSteps && (detail.status === "pending" || detail.status === "running")
+      ? "running"
+      : detail.status;
+
+  const statusCfg = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG.pending;
+
+  const canCancel = effectiveStatus === "pending" || effectiveStatus === "running";
+  const canRestart = effectiveStatus === "failed" || effectiveStatus === "cancelled";
 
   return (
     <div className="dashboard-page">
@@ -127,16 +178,44 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
         title={name}
         subtitle={`Workflow Run ID: ${detail.id}`}
         actions={
-          <Link href="/dashboard/workflows">
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs gap-1.5"
-            >
-              <ArrowLeft size={13} />
-              <span>Back</span>
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {canCancel && (
+              <Button
+                onClick={handleCancel}
+                disabled={actionLoading}
+                variant="outline"
+                size="sm"
+                className="border-red-500/30 text-red-300 hover:text-white bg-red-950/40 hover:bg-red-900/60 text-xs gap-1.5"
+              >
+                {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Ban size={13} />}
+                <span>Cancel Run</span>
+              </Button>
+            )}
+
+            {canRestart && (
+              <Button
+                onClick={handleRestart}
+                disabled={actionLoading}
+                variant="outline"
+                size="sm"
+                className="border-violet-500/30 text-violet-300 hover:text-white bg-violet-950/40 hover:bg-violet-900/60 text-xs gap-1.5"
+              >
+                {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                <span>Restart Run</span>
+              </Button>
+            )}
+
+            <Link href="/dashboard/workflows">
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs gap-1.5"
+              >
+                <ArrowLeft size={13} />
+                <span>Back</span>
+              </Button>
+            </Link>
+          </div>
         }
       />
 
@@ -214,7 +293,9 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                         step.status === "success"
                           ? "bg-emerald-400"
                           : step.status === "failed"
-                          ? "bg-red-500"
+                          ? "bg-red-500 animate-pulse"
+                          : step.status === "cancelled"
+                          ? "bg-amber-400"
                           : step.status === "running"
                           ? "bg-cyan-400 animate-ping"
                           : "bg-amber-400"
@@ -248,9 +329,28 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                       </div>
 
                       {step.error_message && (
-                        <div className="mt-3 p-3 rounded-lg bg-red-950/40 border border-red-500/30 text-xs text-red-300 font-mono">
-                          <span className="font-bold block text-red-400 mb-1">Execution Failure:</span>
-                          {step.error_message}
+                        <div className="mt-3 p-3 rounded-lg bg-red-950/40 border border-red-500/30 text-xs text-red-300 font-mono flex items-start justify-between gap-3">
+                          <div>
+                            <span className="font-bold block text-red-400 mb-1 flex items-center gap-1.5">
+                              <AlertTriangle size={13} />
+                              Execution Failure:
+                            </span>
+                            <span className="line-clamp-2">{step.error_message}</span>
+                          </div>
+                          <Button
+                            onClick={() =>
+                              setSelectedErrorStep({
+                                stepName: step.step_name,
+                                errorMessage: step.error_message!,
+                              })
+                            }
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-[11px] border-red-500/40 text-red-300 hover:text-white bg-red-900/40 shrink-0 gap-1"
+                          >
+                            <Maximize2 size={11} />
+                            <span>Inspect Error</span>
+                          </Button>
                         </div>
                       )}
 
@@ -266,6 +366,15 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
           )}
         </section>
       </div>
+
+      {/* Error Inspector Modal */}
+      <ErrorInspectorModal
+        isOpen={!!selectedErrorStep}
+        onClose={() => setSelectedErrorStep(null)}
+        stepName={selectedErrorStep?.stepName || ""}
+        errorMessage={selectedErrorStep?.errorMessage || ""}
+      />
     </div>
   );
 }
+

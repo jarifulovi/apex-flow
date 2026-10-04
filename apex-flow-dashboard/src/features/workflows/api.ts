@@ -4,7 +4,7 @@ export interface WorkflowStepSummary {
   id: string;
   workflow_run_id: string;
   step_name: string;
-  status: "queued" | "running" | "success" | "failed";
+  status: "queued" | "running" | "success" | "failed" | "cancelled";
   attempt_count: number;
   max_attempts: number;
   locked_until?: string | null;
@@ -21,7 +21,7 @@ export interface Workflow {
   id: string;
   project_id: string;
   workflow_name: string;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   metadata: Record<string, unknown>;
   started_at?: string | null;
   completed_at?: string | null;
@@ -65,4 +65,16 @@ export async function getWorkflows(
 
 export async function getWorkflowDetail(token: string, workflowId: string): Promise<WorkflowDetail> {
   return fetchWithAuth<WorkflowDetail>(`/api/v1/workflows/${workflowId}`, token);
+}
+
+export async function cancelWorkflowRun(token: string, workflowId: string): Promise<WorkflowDetail> {
+  return fetchWithAuth<WorkflowDetail>(`/api/v1/workflows/${workflowId}/cancel`, token, {
+    method: "POST",
+  });
+}
+
+export async function restartWorkflowRun(token: string, workflowId: string): Promise<WorkflowDetail> {
+  return fetchWithAuth<WorkflowDetail>(`/api/v1/workflows/${workflowId}/restart`, token, {
+    method: "POST",
+  });
 }

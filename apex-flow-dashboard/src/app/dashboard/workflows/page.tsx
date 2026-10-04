@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Header } from "@/components/shared/Header";
-import { GitBranch, Loader2, RefreshCw } from "lucide-react";
+import { GitBranch, Loader2, RefreshCw, Search } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
 import { useProject } from "@/features/projects/context";
 import { getWorkflows, type Workflow } from "@/features/workflows/api";
@@ -11,12 +11,18 @@ import {
   WorkflowStatusBar,
 } from "@/features/workflows/components/WorkflowTable";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+const STATUS_FILTERS = ["all", "pending", "running", "completed", "failed", "cancelled"] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 export default function WorkflowsPage() {
   const { accessToken } = useAuth();
   const { currentProject } = useProject();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const loadWorkflows = useCallback(async () => {
     if (!accessToken) return;
@@ -34,6 +40,16 @@ export default function WorkflowsPage() {
   useEffect(() => {
     loadWorkflows();
   }, [loadWorkflows]);
+
+  const filteredWorkflows = useMemo(() => {
+    return workflows.filter((wf) => {
+      const matchesStatus = statusFilter === "all" || wf.status === statusFilter;
+      const q = searchQuery.toLowerCase().trim();
+      const name = (wf.workflow_name || (wf.metadata?.name as string) || "").toLowerCase();
+      const matchesSearch = !q || name.includes(q) || wf.id.toLowerCase().includes(q);
+      return matchesStatus && matchesSearch;
+    });
+  }, [workflows, statusFilter, searchQuery]);
 
   return (
     <div className="dashboard-page">
@@ -53,15 +69,43 @@ export default function WorkflowsPage() {
         }
       />
 
-      <div className="page-content">
+      <div className="page-content space-y-6">
         <WorkflowStatusBar workflows={workflows} />
+
+        {/* Filter & Search Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="filter-tabs w-full sm:w-auto" role="tablist" aria-label="Workflow status filter">
+            {STATUS_FILTERS.map((s) => (
+              <button
+                key={s}
+                role="tab"
+                aria-selected={statusFilter === s}
+                id={`tab-wf-${s}`}
+                className={`filter-tab${statusFilter === s ? " filter-tab--active" : ""}`}
+                onClick={() => setStatusFilter(s)}
+              >
+                {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full sm:w-64">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <Input
+              placeholder="Search by name or ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-[#161620] border-white/10 text-zinc-100 text-xs focus:border-violet-500"
+            />
+          </div>
+        </div>
 
         <section className="dashboard-section" aria-labelledby="workflows-table-heading">
           <div className="dashboard-section-header">
-            <GitBranch size={15} className="section-icon" />
+            <GitBranch size={15} className="section-icon text-violet-400" />
             <h2 id="workflows-table-heading" className="dashboard-section-title">
               Workflow Runs
-              <span className="section-count">{workflows.length}</span>
+              <span className="section-count">{filteredWorkflows.length}</span>
             </h2>
           </div>
 
@@ -71,7 +115,7 @@ export default function WorkflowsPage() {
               <span>Loading workflows...</span>
             </div>
           ) : (
-            <WorkflowTable workflows={workflows} />
+            <WorkflowTable workflows={filteredWorkflows} />
           )}
         </section>
       </div>

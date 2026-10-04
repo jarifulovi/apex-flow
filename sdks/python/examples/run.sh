@@ -31,15 +31,16 @@ print_usage() {
 }
 
 OPTION="${1:-}"
+shift 2>/dev/null
 
 case "$OPTION" in
     ecom|order)
         echo "Running E-Commerce Order Processing Example..."
-        "$PYTHON_BIN" "$SCRIPT_DIR/ecommerce_order_processing.py"
+        "$PYTHON_BIN" "$SCRIPT_DIR/ecommerce_order_processing.py" "$@"
         ;;
     lead|worker)
         echo "Running AI Lead Processing Example..."
-        "$PYTHON_BIN" "$SCRIPT_DIR/worker_example.py"
+        "$PYTHON_BIN" "$SCRIPT_DIR/worker_example.py" "$@"
         ;;
     -h|--help|help)
         print_usage
@@ -55,3 +56,4 @@ case "$OPTION" in
         fi
         ;;
 esac
+

@@ -1,4 +1,4 @@
-import { GitBranch, Clock, CheckCircle2, AlertTriangle, ChevronRight, Timer } from "lucide-react";
+import { GitBranch, Clock, CheckCircle2, AlertTriangle, ChevronRight, Timer, Ban } from "lucide-react";
 import Link from "next/link";
 import { formatDurationMs, type Workflow } from "@/features/workflows/api";
 
@@ -10,6 +10,7 @@ const STATUS_CONFIG: Record<
   running:   { label: "Running",   className: "status-badge status-badge--running",   dot: "status-dot--running" },
   completed: { label: "Completed", className: "status-badge status-badge--completed", dot: "status-dot--completed" },
   failed:    { label: "Failed",    className: "status-badge status-badge--failed",    dot: "status-dot--failed" },
+  cancelled: { label: "Cancelled", className: "status-badge bg-zinc-800/80 text-zinc-400 border-zinc-700/50", dot: "bg-zinc-500" },
 };
 
 function formatDate(iso: string) {
@@ -26,7 +27,7 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
     return (
       <div className="table-empty">
         <GitBranch size={28} className="table-empty-icon" />
-        <p className="table-empty-text">No workflows yet</p>
+        <p className="table-empty-text">No workflows found</p>
         <p className="table-empty-sub">Workflows created by your workers will appear here.</p>
       </div>
     );
@@ -47,7 +48,7 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
         </thead>
         <tbody>
           {workflows.map((wf) => {
-            const cfg = STATUS_CONFIG[wf.status];
+            const cfg = STATUS_CONFIG[wf.status] || STATUS_CONFIG.pending;
             const name = wf.workflow_name || (wf.metadata?.name as string) || `Workflow #${wf.id.substring(0, 8)}`;
             const duration = formatDurationMs(wf.started_at || wf.created_at, wf.completed_at);
             return (
@@ -100,7 +101,7 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
 }
 
 export function WorkflowStatusBar({ workflows }: { workflows: Workflow[] }) {
-  const counts = { pending: 0, running: 0, completed: 0, failed: 0 };
+  const counts = { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
   for (const wf of workflows) {
     if (counts[wf.status] !== undefined) counts[wf.status]++;
   }
@@ -110,6 +111,7 @@ export function WorkflowStatusBar({ workflows }: { workflows: Workflow[] }) {
     { label: "Running",   value: counts.running,   icon: GitBranch,      cls: "text-cyan-400" },
     { label: "Completed", value: counts.completed, icon: CheckCircle2,   cls: "text-emerald-400" },
     { label: "Failed",    value: counts.failed,    icon: AlertTriangle,  cls: "text-red-400" },
+    { label: "Cancelled", value: counts.cancelled, icon: Ban,            cls: "text-zinc-400" },
   ];
 
   return (

@@ -69,3 +69,31 @@ async def get_workflow_detail(
     return await WorkflowService.get_workflow_run_by_id(
         db=db, workflow_run_id=workflow_id, owner_id=authenticated_user_id
     )
+
+
+@router.post("/workflows/{workflow_id}/cancel", response_model=WorkflowDetailResponse)
+async def cancel_workflow_run(
+    workflow_id: uuid.UUID,
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Cancel an active workflow run and mark queued steps as cancelled.
+    """
+    return await WorkflowService.cancel_workflow_run(
+        db=db, workflow_run_id=workflow_id, owner_id=authenticated_user_id
+    )
+
+
+@router.post("/workflows/{workflow_id}/restart", response_model=WorkflowDetailResponse)
+async def restart_workflow_run(
+    workflow_id: uuid.UUID,
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Reset failed or cancelled steps back to queued and restart the workflow run.
+    """
+    return await WorkflowService.restart_workflow_run(
+        db=db, workflow_run_id=workflow_id, owner_id=authenticated_user_id
+    )

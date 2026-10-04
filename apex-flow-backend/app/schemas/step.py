@@ -10,6 +10,7 @@ class StepStatus(str, Enum):
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 # Schema to create a new step
