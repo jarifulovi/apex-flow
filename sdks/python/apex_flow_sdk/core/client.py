@@ -52,7 +52,12 @@ class ApexFlowClient:
 
             @functools.wraps(func)
             async def wrapper(ctx: WorkflowContext, *args, **kwargs):
-                return await func(ctx, *args, **kwargs)
+                try:
+                    result = await func(ctx, *args, **kwargs)
+                    await self.complete_workflow(ctx.workflow_run_id)
+                    return result
+                except Exception as e:
+                    raise e
 
             return wrapper
 
@@ -88,6 +93,14 @@ class ApexFlowClient:
         res.raise_for_status()
         workflow_data = res.json()
         return uuid.UUID(workflow_data["id"])
+
+    async def complete_workflow(self, workflow_run_id: Union[str, uuid.UUID]) -> Dict[str, Any]:
+        """
+        Explicitly mark workflow execution run as completed on control plane.
+        """
+        res = await self.http_client.post(f"{self.base_url}/api/v1/workflows/{workflow_run_id}/complete")
+        res.raise_for_status()
+        return res.json()
 
     async def cancel_workflow(self, workflow_run_id: Union[str, uuid.UUID]) -> Dict[str, Any]:
         """

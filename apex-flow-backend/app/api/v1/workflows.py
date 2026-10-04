@@ -97,3 +97,18 @@ async def restart_workflow_run(
     return await WorkflowService.restart_workflow_run(
         db=db, workflow_run_id=workflow_id, owner_id=authenticated_user_id
     )
+
+
+@router.post("/workflows/{workflow_id}/complete", response_model=WorkflowDetailResponse)
+async def complete_workflow_run(
+    workflow_id: uuid.UUID,
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Explicitly mark workflow execution run as completed.
+    """
+    return await WorkflowService.complete_workflow_run(
+        db=db, workflow_run_id=workflow_id, owner_id=authenticated_user_id
+    )
+

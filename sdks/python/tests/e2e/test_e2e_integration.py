@@ -54,6 +54,9 @@ async def test_e2e_full_workflow_and_worker_pipeline(test_project_key: str):
     res4 = await ctx.step("notify-slack", step_4)
     assert res4["slack_notification"] == "delivered"
 
+    # Complete workflow explicitly
+    await client.complete_workflow(workflow_id)
+
     # 6. Verify master workflow detail state on control plane backend
     wf_detail_res = await client.http_client.get(f"/api/v1/workflows/{workflow_id}")
     assert wf_detail_res.status_code == 200

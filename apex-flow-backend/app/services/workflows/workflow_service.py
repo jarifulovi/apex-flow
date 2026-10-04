@@ -167,3 +167,30 @@ class WorkflowService:
         await db.commit()
         await db.refresh(workflow_run)
         return workflow_run
+
+    @staticmethod
+    async def complete_workflow_run(
+        db: AsyncSession,
+        workflow_run_id: uuid.UUID,
+        owner_id: Optional[uuid.UUID] = None,
+        project_id: Optional[uuid.UUID] = None,
+    ) -> WorkflowRun:
+        """Explicitly mark a workflow run as completed if no child steps failed or cancelled."""
+        workflow_run = await WorkflowService.get_workflow_run_by_id(
+            db=db, workflow_run_id=workflow_run_id, owner_id=owner_id, project_id=project_id
+        )
+
+        now = datetime.now(timezone.utc)
+        has_failed_steps = any(s.status in ("failed", "cancelled") for s in workflow_run.steps)
+
+        if has_failed_steps or workflow_run.status in ("failed", "cancelled"):
+            workflow_run.status = "failed" if workflow_run.status != "cancelled" else "cancelled"
+            workflow_run.completed_at = now
+        else:
+            workflow_run.status = "completed"
+            workflow_run.completed_at = now
+
+        await db.commit()
+        await db.refresh(workflow_run)
+        return workflow_run
+

@@ -57,6 +57,9 @@ async def test_durable_checkpoint_resumption(test_project_key: str):
     res2 = await ctx2.step("enrich-lead", lambda: {"status": "enriched", "score": 95})
     assert res2["score"] == 95
 
+    # Complete workflow explicitly
+    await client.complete_workflow(run_id)
+
     # Verify run completed on control plane
     wf_res = await client.http_client.get(f"/api/v1/workflows/{run_id}")
     assert wf_res.status_code == 200
