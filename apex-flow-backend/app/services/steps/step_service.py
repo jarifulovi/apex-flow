@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import EntityNotFoundException
@@ -14,16 +14,14 @@ class StepService:
     @staticmethod
     async def create_step(db: AsyncSession, payload: WorkflowStepCreate) -> WorkflowStep:
         """Queue a new step under an existing workflow run."""
-        wf_query = select(WorkflowRun).where(WorkflowRun.id == payload.workflow_id).with_for_update()
-        wf_res = await db.execute(wf_query)
-        workflow_run = wf_res.scalar_one_or_none()
+        now = datetime.now(timezone.utc)
 
-        if not workflow_run:
-            raise EntityNotFoundException("WorkflowRun", payload.workflow_id)
-
-        if workflow_run.status == "pending":
-            workflow_run.status = "running"
-            workflow_run.started_at = workflow_run.started_at or datetime.now(timezone.utc)
+        # Update parent workflow status to running if pending (atomic query, non-blocking)
+        await db.execute(
+            update(WorkflowRun)
+            .where(WorkflowRun.id == payload.workflow_id, WorkflowRun.status == "pending")
+            .values(status="running", started_at=func.coalesce(WorkflowRun.started_at, now))
+        )
 
         step = WorkflowStep(
             workflow_run_id=payload.workflow_id,
@@ -54,16 +52,14 @@ class StepService:
         step.error_message = payload.error_message
         step.locked_until = None
 
-        wf_stmt = select(WorkflowRun).where(WorkflowRun.id == step.workflow_run_id).with_for_update()
-        wf_res = await db.execute(wf_stmt)
-        parent_wf = wf_res.scalar_one_or_none()
-
         if payload.status == "failed":
             step.status = "failed"
             step.completed_at = now
-            if parent_wf:
-                parent_wf.status = "failed"
-                parent_wf.completed_at = now
+            await db.execute(
+                update(WorkflowRun)
+                .where(WorkflowRun.id == step.workflow_run_id)
+                .values(status="failed", completed_at=now)
+            )
         else:
             step.status = "success"
             step.completed_at = now

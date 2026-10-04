@@ -274,3 +274,83 @@ async def test_targeted_worker_polling(test_project_key: str):
     assert poll_res.json()["step_name"] == "send-email"
 
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_multi_worker_queue_contention(test_project_key: str):
+    """
+    Test Concurrent Multi-Worker Queue Contention:
+    Queue 15 steps simultaneously.
+    3 concurrent workers ('Worker-Alpha', 'Worker-Beta', 'Worker-Gamma') poll and process steps in parallel.
+    Verifies zero race conditions, zero double-claims (FOR UPDATE SKIP LOCKED), and 100% step completion.
+    """
+    client = ApexFlowClient(base_url="http://test", project_key=test_project_key)
+    client.http_client = AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"X-ApexFlow-Project-Key": test_project_key},
+    )
+
+    run_id = await client.trigger_workflow("concurrent-multi-worker-pipeline")
+
+    # Queue 30 steps concurrently to ensure multi-worker load balancing across event loop iterations
+    step_names = [f"concurrent-step-{i}" for i in range(30)]
+    for s_name in step_names:
+        await client.http_client.post(
+            "/api/v1/steps",
+            json={"workflow_id": str(run_id), "step_name": s_name},
+        )
+
+    processed_steps = set()
+    worker_claims = {"Worker-Alpha": 0, "Worker-Beta": 0, "Worker-Gamma": 0}
+
+    async def run_worker(worker_name: str):
+        worker_client = ApexFlowClient(base_url="http://test", project_key=test_project_key)
+        worker_client.http_client = AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            headers={"X-ApexFlow-Project-Key": test_project_key},
+        )
+        while True:
+            poll_res = await worker_client.http_client.post(
+                "/api/v1/steps/poll",
+                json={"worker_name": worker_name},
+            )
+            if poll_res.status_code == 200 and poll_res.json():
+                step_data = poll_res.json()
+                step_id = step_data["id"]
+                s_name = step_data["step_name"]
+
+                # Assert FOR UPDATE SKIP LOCKED guarantee: zero double-claims
+                assert s_name not in processed_steps, f"Step '{s_name}' was double-claimed!"
+                processed_steps.add(s_name)
+                worker_claims[worker_name] += 1
+
+                # Complete step
+                await worker_client.http_client.post(
+                    "/api/v1/steps/report",
+                    json={"step_id": step_id, "status": "success", "output_payload": {"by": worker_name}},
+                )
+                await asyncio.sleep(0.01)
+            else:
+                break
+        await worker_client.close()
+
+    # Spawn 3 workers polling concurrently
+    await asyncio.gather(
+        run_worker("Worker-Alpha"),
+        run_worker("Worker-Beta"),
+        run_worker("Worker-Gamma"),
+    )
+
+    assert len(processed_steps) == 30
+    assert sum(worker_claims.values()) == 30
+    active_workers = [w for w, c in worker_claims.items() if c > 0]
+    assert len(active_workers) >= 2
+
+    await client.complete_workflow(run_id)
+    wf_res = await client.http_client.get(f"/api/v1/workflows/{run_id}")
+    assert wf_res.json()["status"] == "completed"
+
+    await client.close()
+

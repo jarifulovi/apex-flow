@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.step import WorkflowStep
@@ -29,7 +29,7 @@ class QueueService:
                 WorkflowStep.locked_until.is_not(None),
                 WorkflowStep.locked_until < now,
             )
-            .with_for_update(skip_locked=True)
+            .with_for_update(of=WorkflowStep, skip_locked=True)
         )
         result = await db.execute(stale_query)
         stale_steps = list(result.scalars().all())
@@ -45,13 +45,11 @@ class QueueService:
                 step.locked_until = None
 
                 # Mark parent workflow run failed
-                wf_res = await db.execute(
-                    select(WorkflowRun).where(WorkflowRun.id == step.workflow_run_id)
+                await db.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id == step.workflow_run_id)
+                    .values(status="failed", completed_at=now)
                 )
-                parent_wf = wf_res.scalar_one_or_none()
-                if parent_wf and parent_wf.status != "failed":
-                    parent_wf.status = "failed"
-                    parent_wf.completed_at = now
 
         if stale_steps:
             await db.commit()
@@ -101,7 +99,7 @@ class QueueService:
         stmt = (
             stmt.order_by(WorkflowStep.created_at.asc())
             .limit(1)
-            .with_for_update(skip_locked=True)
+            .with_for_update(of=WorkflowStep, skip_locked=True)
         )
         result = await db.execute(stmt)
         step = result.scalar_one_or_none()
@@ -116,14 +114,12 @@ class QueueService:
         step.started_at = step.started_at or now
         step.locked_until = now + lock_duration
 
-        # 5. Update parent workflow run state to running if pending
-        wf_res = await db.execute(
-            select(WorkflowRun).where(WorkflowRun.id == step.workflow_run_id).with_for_update()
+        # 5. Update parent workflow run state to running if pending (non-blocking atomic update)
+        await db.execute(
+            update(WorkflowRun)
+            .where(WorkflowRun.id == step.workflow_run_id, WorkflowRun.status == "pending")
+            .values(status="running", started_at=func.coalesce(WorkflowRun.started_at, now))
         )
-        parent_wf = wf_res.scalar_one_or_none()
-        if parent_wf and parent_wf.status == "pending":
-            parent_wf.status = "running"
-            parent_wf.started_at = parent_wf.started_at or now
 
         await db.commit()
         await db.refresh(step)
