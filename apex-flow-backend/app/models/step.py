@@ -29,6 +29,12 @@ class WorkflowStep(Base):
         String,
         nullable=False,
     )
+    step_order: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+    )
     status: Mapped[str] = mapped_column(
         String,
         nullable=False,

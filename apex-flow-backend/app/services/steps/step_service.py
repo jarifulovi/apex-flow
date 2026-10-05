@@ -26,6 +26,7 @@ class StepService:
         step = WorkflowStep(
             workflow_run_id=payload.workflow_id,
             step_name=payload.step_name,
+            step_order=payload.step_order,
             status="queued",
             max_attempts=payload.max_attempts,
             input_payload=payload.input_payload or {},

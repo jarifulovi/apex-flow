@@ -354,3 +354,49 @@ async def test_concurrent_multi_worker_queue_contention(test_project_key: str):
 
     await client.close()
 
+
+@pytest.mark.asyncio
+async def test_deduplication_and_step_ordering(test_project_key: str):
+    """
+    Test Deduplication ID & Step Order:
+    1. Triggers workflow with deduplication_id='dedup-evt-999'.
+    2. Triggers second workflow with same deduplication_id: returns same run_id!
+    3. Verifies queued step has step_order preserved.
+    """
+    client = ApexFlowClient(base_url="http://test", project_key=test_project_key)
+    client.http_client = AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"X-ApexFlow-Project-Key": test_project_key},
+    )
+
+    # 1. Trigger run 1 with deduplication key
+    res1 = await client.http_client.post(
+        "/api/v1/workflows",
+        json={"workflow_name": "order-pipeline", "deduplication_id": "dedup-evt-999"},
+    )
+    assert res1.status_code in (200, 201)
+    run_id_1 = res1.json()["id"]
+
+    # 2. Trigger run 2 with identical deduplication key while run 1 is active
+    res2 = await client.http_client.post(
+        "/api/v1/workflows",
+        json={"workflow_name": "order-pipeline", "deduplication_id": "dedup-evt-999"},
+    )
+    assert res2.status_code in (200, 201)
+    run_id_2 = res2.json()["id"]
+
+    # Should return identical run_id (deduplicated!)
+    assert run_id_1 == run_id_2
+
+    # 3. Queue step with step_order=2
+    step_res = await client.http_client.post(
+        "/api/v1/steps",
+        json={"workflow_id": run_id_1, "step_name": "validate-cart", "step_order": 2},
+    )
+    assert step_res.status_code in (200, 201)
+    assert step_res.json()["step_order"] == 2
+
+    await client.close()
+
+

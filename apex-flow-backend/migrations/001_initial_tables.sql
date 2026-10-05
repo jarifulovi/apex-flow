@@ -3,9 +3,12 @@
 -- ==========================================
 
 -- Drop existing indexes if they exist
+DROP INDEX IF EXISTS idx_workflow_steps_order;
 DROP INDEX IF EXISTS idx_workflow_steps_run;
 DROP INDEX IF EXISTS idx_workflow_steps_locked;
 DROP INDEX IF EXISTS idx_workflow_steps_queue;
+DROP INDEX IF EXISTS idx_workflow_runs_parent;
+DROP INDEX IF EXISTS idx_workflow_runs_dedup;
 DROP INDEX IF EXISTS idx_workflow_runs_status;
 DROP INDEX IF EXISTS idx_workflow_runs_project;
 DROP INDEX IF EXISTS idx_workers_project_status;
@@ -71,6 +74,8 @@ CREATE TABLE workflow_runs (
     workflow_name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    deduplication_id TEXT NULL,
+    parent_workflow_id UUID NULL REFERENCES workflow_runs(id) ON DELETE SET NULL,
     started_at TIMESTAMPTZ NULL,
     completed_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -79,12 +84,15 @@ CREATE TABLE workflow_runs (
 
 CREATE INDEX idx_workflow_runs_project ON workflow_runs (project_id, created_at DESC);
 CREATE INDEX idx_workflow_runs_status ON workflow_runs (project_id, status);
+CREATE UNIQUE INDEX idx_workflow_runs_dedup ON workflow_runs (project_id, deduplication_id) WHERE deduplication_id IS NOT NULL;
+CREATE INDEX idx_workflow_runs_parent ON workflow_runs (parent_workflow_id) WHERE parent_workflow_id IS NOT NULL;
 
 -- 5. Create the workflow_steps table (Queue + Execution Checkpoints)
 CREATE TABLE workflow_steps (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workflow_run_id UUID NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
     step_name TEXT NOT NULL,
+    step_order INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'queued',
     attempt_count INTEGER NOT NULL DEFAULT 0,
     max_attempts INTEGER NOT NULL DEFAULT 3,
@@ -106,3 +114,4 @@ CREATE INDEX idx_workflow_steps_locked ON workflow_steps (status, locked_until) 
 
 -- Run steps lookups
 CREATE INDEX idx_workflow_steps_run ON workflow_steps (workflow_run_id, created_at);
+CREATE INDEX idx_workflow_steps_order ON workflow_steps (workflow_run_id, step_order);

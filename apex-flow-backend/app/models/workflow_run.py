@@ -43,6 +43,15 @@ class WorkflowRun(Base):
         default=dict,
         server_default=text("'{}'::jsonb"),
     )
+    deduplication_id: Mapped[Optional[str]] = mapped_column(
+        String,
+        nullable=True,
+    )
+    parent_workflow_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("workflow_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     started_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -72,5 +81,5 @@ class WorkflowRun(Base):
         "WorkflowStep",
         back_populates="workflow_run",
         cascade="all, delete-orphan",
-        order_by="WorkflowStep.created_at",
+        order_by="WorkflowStep.step_order",
     )

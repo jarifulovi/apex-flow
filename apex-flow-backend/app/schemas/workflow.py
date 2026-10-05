@@ -20,6 +20,8 @@ class WorkflowCreate(BaseModel):
     workflow_name: str = "default-workflow"
     project_id: Optional[uuid.UUID] = None
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    deduplication_id: Optional[str] = None
+    parent_workflow_id: Optional[uuid.UUID] = None
 
 
 # Schema to receive on workflow run update
@@ -35,6 +37,8 @@ class WorkflowResponse(BaseModel):
     workflow_name: str
     status: WorkflowStatus
     metadata: Dict[str, Any] = Field(alias="metadata_")
+    deduplication_id: Optional[str] = None
+    parent_workflow_id: Optional[uuid.UUID] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime

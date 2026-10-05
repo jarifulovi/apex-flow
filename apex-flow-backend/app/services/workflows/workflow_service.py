@@ -31,11 +31,24 @@ class WorkflowService:
             )
             target_project_id = default_project.id
 
+        if payload.deduplication_id:
+            stmt = select(WorkflowRun).where(
+                WorkflowRun.project_id == target_project_id,
+                WorkflowRun.deduplication_id == payload.deduplication_id,
+                WorkflowRun.status.in_(["pending", "running"]),
+            )
+            res = await db.execute(stmt)
+            existing_run = res.scalar_one_or_none()
+            if existing_run:
+                return existing_run
+
         workflow_run = WorkflowRun(
             project_id=target_project_id,
             workflow_name=payload.workflow_name,
             status="pending",
             metadata_=payload.metadata or {},
+            deduplication_id=payload.deduplication_id,
+            parent_workflow_id=payload.parent_workflow_id,
         )
         db.add(workflow_run)
         await db.commit()

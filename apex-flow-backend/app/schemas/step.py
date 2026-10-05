@@ -17,6 +17,7 @@ class StepStatus(str, Enum):
 class WorkflowStepCreate(BaseModel):
     workflow_id: uuid.UUID  # Accepts workflow_id or workflow_run_id
     step_name: str
+    step_order: int = 1
     input_payload: Optional[Dict[str, Any]] = Field(default_factory=dict)
     max_attempts: int = 3
 
@@ -42,6 +43,7 @@ class WorkflowStepResponse(BaseModel):
     id: uuid.UUID
     workflow_run_id: uuid.UUID
     step_name: str
+    step_order: int = 1
     status: StepStatus
     attempt_count: int
     max_attempts: int
