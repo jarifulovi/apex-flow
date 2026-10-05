@@ -42,7 +42,6 @@ export function StatCards({ stats }: { stats: DashboardStats }) {
       icon: GitBranch,
       color: "violet",
       hint: "Registered workflow runs",
-      href: "/dashboard/workflows",
     },
     {
       id: "stat-workers-active",
@@ -51,7 +50,6 @@ export function StatCards({ stats }: { stats: DashboardStats }) {
       icon: Cpu,
       color: "cyan",
       hint: "Live polling SDK workers",
-      href: "/dashboard/workers",
     },
     {
       id: "stat-steps-active",
@@ -60,7 +58,6 @@ export function StatCards({ stats }: { stats: DashboardStats }) {
       icon: Clock,
       color: "amber",
       hint: "Queued or running steps",
-      href: "/dashboard/steps",
     },
     {
       id: "stat-steps-done",
@@ -69,14 +66,13 @@ export function StatCards({ stats }: { stats: DashboardStats }) {
       icon: CheckCircle2,
       color: "emerald",
       hint: "Successfully processed",
-      href: "/dashboard/steps",
     },
   ];
 
   return (
     <>
-      {cards.map(({ id, label, value, icon: Icon, color, hint, href }) => (
-        <Link key={id} id={id} href={href} className={`stat-card stat-card--${color}`}>
+      {cards.map(({ id, label, value, icon: Icon, color, hint }) => (
+        <div key={id} id={id} className={`stat-card stat-card--${color}`}>
           <div className="stat-card-header">
             <span className="stat-card-label">{label}</span>
             <div className={`stat-card-icon stat-card-icon--${color}`}>
@@ -85,7 +81,7 @@ export function StatCards({ stats }: { stats: DashboardStats }) {
           </div>
           <p className="stat-card-value">{value.toLocaleString()}</p>
           <p className="stat-card-hint">{hint}</p>
-        </Link>
+        </div>
       ))}
     </>
   );

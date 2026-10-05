@@ -6,10 +6,7 @@ import { GitBranch, Loader2, RefreshCw, Search } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
 import { useProject } from "@/features/projects/context";
 import { getWorkflows, type Workflow } from "@/features/workflows/api";
-import {
-  WorkflowTable,
-  WorkflowStatusBar,
-} from "@/features/workflows/components/WorkflowTable";
+import { WorkflowTable } from "@/features/workflows/components/WorkflowTable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -50,6 +47,14 @@ export default function WorkflowsPage() {
     setCurrentPage(1);
   }, [searchQuery, statusFilter, currentProject?.id]);
 
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: workflows.length, pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
+    for (const wf of workflows) {
+      if (counts[wf.status] !== undefined) counts[wf.status]++;
+    }
+    return counts;
+  }, [workflows]);
+
   const filteredWorkflows = useMemo(() => {
     return workflows.filter((wf) => {
       const matchesStatus = statusFilter === "all" || wf.status === statusFilter;
@@ -86,11 +91,9 @@ export default function WorkflowsPage() {
       />
 
       <div className="page-content space-y-6">
-        <WorkflowStatusBar workflows={workflows} />
-
         {/* Filter & Search Bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="filter-tabs w-full sm:w-auto" role="tablist" aria-label="Workflow status filter">
+          <div className="filter-tabs w-full sm:w-auto overflow-x-auto" role="tablist" aria-label="Workflow status filter">
             {STATUS_FILTERS.map((s) => (
               <button
                 key={s}
@@ -100,7 +103,10 @@ export default function WorkflowsPage() {
                 className={`filter-tab${statusFilter === s ? " filter-tab--active" : ""}`}
                 onClick={() => setStatusFilter(s)}
               >
-                {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+                <span>{s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}</span>
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] bg-white/10 text-zinc-300 font-mono font-medium">
+                  {statusCounts[s] || 0}
+                </span>
               </button>
             ))}
           </div>

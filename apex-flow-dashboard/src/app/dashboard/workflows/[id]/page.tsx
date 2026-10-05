@@ -45,7 +45,7 @@ const STATUS_CONFIG: Record<
   queued: { label: "Queued", className: "status-badge status-badge--pending", dot: "status-dot--pending", icon: Clock },
 };
 
-function PayloadBox({ label, payload }: { label: string; payload?: Record<string, unknown> }) {
+function PayloadButton({ label, payload }: { label: string; payload?: Record<string, unknown> }) {
   const [modalOpen, setModalOpen] = useState(false);
   const isEmpty = !payload || Object.keys(payload).length === 0;
 
@@ -53,18 +53,14 @@ function PayloadBox({ label, payload }: { label: string; payload?: Record<string
 
   return (
     <>
-      <div className="mt-2 border border-white/5 rounded-lg bg-[#111118] overflow-hidden text-xs">
-        <button
-          onClick={() => setModalOpen(true)}
-          className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-colors font-mono"
-        >
-          <span className="flex items-center gap-1.5">
-            <FileCode2 size={13} className="text-violet-400" />
-            {label}
-          </span>
-          <span className="text-[10px] text-violet-300 bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20">Inspect JSON</span>
-        </button>
-      </div>
+      <button
+        onClick={() => setModalOpen(true)}
+        className="px-2 py-1 rounded bg-[#1b1b28] hover:bg-violet-600/20 border border-white/10 hover:border-violet-500/40 text-[11px] font-mono text-violet-300 hover:text-white flex items-center gap-1.5 transition-colors"
+        title={`Inspect ${label}`}
+      >
+        <FileCode2 size={12} className="text-violet-400" />
+        <span>{label}</span>
+      </button>
 
       {modalOpen && (
         <PayloadViewerModal
@@ -290,7 +286,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
               <p className="table-empty-sub">Steps executed in this workflow will appear here in order.</p>
             </div>
           ) : (
-            <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-white/10">
+            <div className="relative pl-6 space-y-3 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-white/10">
               {detail.steps.map((step: WorkflowStepSummary, index: number) => {
                 const sCfg = STATUS_CONFIG[step.status] || STATUS_CONFIG.queued;
                 const Icon = sCfg.icon;
@@ -300,7 +296,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                   <div key={step.id} className="relative group">
                     {/* Timeline Node Dot */}
                     <div
-                      className={`absolute -left-[1.85rem] top-1.5 h-4 w-4 rounded-full border-2 border-[#111118] flex items-center justify-center ${step.status === "success"
+                      className={`absolute -left-[1.85rem] top-2.5 h-3.5 w-3.5 rounded-full border-2 border-[#111118] flex items-center justify-center ${step.status === "success"
                           ? "bg-emerald-400"
                           : step.status === "failed"
                             ? "bg-red-500 animate-pulse"
@@ -312,18 +308,18 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                         }`}
                     />
 
-                    <div className="bg-[#161620] border border-white/10 rounded-xl p-4 transition-all hover:border-violet-500/40">
+                    <div className="bg-[#161620] border border-white/10 rounded-xl p-3 sm:p-3.5 transition-all hover:border-violet-500/40">
                       <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-mono font-bold text-violet-400 bg-violet-950/60 border border-violet-500/30 px-2 py-0.5 rounded">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-[11px] font-mono font-bold text-violet-400 bg-violet-950/60 border border-violet-500/30 px-2 py-0.5 rounded">
                             Step #{index + 1}
                           </span>
-                          <h3 className="text-sm font-semibold text-zinc-100 font-mono">
+                          <h3 className="text-xs sm:text-sm font-semibold text-zinc-100 font-mono">
                             {step.step_name}
                           </h3>
                         </div>
 
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3 flex-wrap">
                           <span className="text-xs text-zinc-400 font-mono flex items-center gap-1">
                             <Timer size={12} className="text-zinc-500" />
                             {stepDuration}
@@ -335,13 +331,18 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                             <Icon size={12} className={step.status === "running" ? "animate-spin mr-1" : "mr-1"} />
                             {sCfg.label}
                           </span>
+
+                          <div className="flex items-center gap-1.5 ml-1">
+                            <PayloadButton label="Input JSON" payload={step.input_payload} />
+                            <PayloadButton label="Output JSON" payload={step.output_payload} />
+                          </div>
                         </div>
                       </div>
 
                       {step.error_message && (
-                        <div className="mt-3 p-3 rounded-lg bg-red-950/40 border border-red-500/30 text-xs text-red-300 font-mono flex items-start justify-between gap-3">
+                        <div className="mt-2.5 p-2.5 rounded-lg bg-red-950/40 border border-red-500/30 text-xs text-red-300 font-mono flex items-start justify-between gap-3">
                           <div>
-                            <span className="font-bold block text-red-400 mb-1 flex items-center gap-1.5">
+                            <span className="font-bold block text-red-400 mb-0.5 flex items-center gap-1.5">
                               <AlertTriangle size={13} />
                               Execution Failure:
                             </span>
@@ -356,18 +357,13 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                             }
                             variant="outline"
                             size="sm"
-                            className="h-7 text-[11px] border-red-500/40 text-red-300 hover:text-white bg-red-900/40 shrink-0 gap-1"
+                            className="h-6 text-[11px] border-red-500/40 text-red-300 hover:text-white bg-red-900/40 shrink-0 gap-1 px-2"
                           >
                             <Maximize2 size={11} />
                             <span>Inspect Error</span>
                           </Button>
                         </div>
                       )}
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                        <PayloadBox label="Input Payload" payload={step.input_payload} />
-                        <PayloadBox label="Output Payload" payload={step.output_payload} />
-                      </div>
                     </div>
                   </div>
                 );

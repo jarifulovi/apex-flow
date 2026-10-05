@@ -68,6 +68,7 @@ class WorkflowService:
         """List workflow runs with optional project, owner, or parent_workflow_id filtering."""
         query = (
             select(WorkflowRun)
+            .options(selectinload(WorkflowRun.steps))
             .order_by(WorkflowRun.created_at.desc())
             .offset(offset)
             .limit(limit)

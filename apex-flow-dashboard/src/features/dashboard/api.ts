@@ -41,7 +41,7 @@ export async function fetchDashboardOverview(token: string, projectId?: string) 
   ).length;
 
   const activities: ActivityItem[] = steps
-    .slice(0, 10)
+    .slice(0, 6)
     .map((s) => ({
       id: s.id,
       workflowId: s.workflow_run_id || (s as any).workflow_id,

@@ -97,10 +97,11 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
                 <td>
                   <Link
                     href={`/dashboard/workflows/${wf.id}`}
-                    className="table-action-btn"
+                    className="px-3 py-1.5 rounded-lg bg-violet-600/15 hover:bg-violet-600 border border-violet-500/30 hover:border-violet-500 text-xs font-semibold text-violet-300 hover:text-white transition-all flex items-center gap-1.5 shadow-sm"
                     aria-label={`View workflow ${name}`}
                   >
-                    <ChevronRight size={15} />
+                    <span>View Detail</span>
+                    <ChevronRight size={14} />
                   </Link>
                 </td>
               </tr>

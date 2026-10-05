@@ -83,3 +83,7 @@ class WorkflowRun(Base):
         cascade="all, delete-orphan",
         order_by="WorkflowStep.step_order",
     )
+
+    @property
+    def steps_count(self) -> int:
+        return len(self.steps) if self.steps is not None else 0

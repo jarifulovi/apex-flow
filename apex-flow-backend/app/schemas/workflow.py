@@ -39,6 +39,7 @@ class WorkflowResponse(BaseModel):
     metadata: Dict[str, Any] = Field(alias="metadata_")
     deduplication_id: Optional[str] = None
     parent_workflow_id: Optional[uuid.UUID] = None
+    steps_count: int = 0
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
