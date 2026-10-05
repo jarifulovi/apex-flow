@@ -54,7 +54,8 @@ export async function getWorkflows(
   token: string,
   projectId?: string,
   limit = 50,
-  offset = 0
+  offset = 0,
+  parentWorkflowId?: string
 ): Promise<Workflow[]> {
   const query = new URLSearchParams({
     limit: limit.toString(),
@@ -62,6 +63,9 @@ export async function getWorkflows(
   });
   if (projectId) {
     query.set("project_id", projectId);
+  }
+  if (parentWorkflowId) {
+    query.set("parent_workflow_id", parentWorkflowId);
   }
   return fetchWithAuth<Workflow[]>(`/api/v1/workflows?${query.toString()}`, token);
 }

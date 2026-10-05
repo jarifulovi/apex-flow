@@ -61,10 +61,11 @@ class WorkflowService:
         owner_id: Optional[uuid.UUID] = None,
         project_id: Optional[uuid.UUID] = None,
         workflow_name: Optional[str] = None,
+        parent_workflow_id: Optional[uuid.UUID] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> List[WorkflowRun]:
-        """List workflow runs with optional project or owner filtering."""
+        """List workflow runs with optional project, owner, or parent_workflow_id filtering."""
         query = (
             select(WorkflowRun)
             .order_by(WorkflowRun.created_at.desc())
@@ -79,6 +80,9 @@ class WorkflowService:
 
         if workflow_name:
             query = query.where(WorkflowRun.workflow_name == workflow_name)
+
+        if parent_workflow_id:
+            query = query.where(WorkflowRun.parent_workflow_id == parent_workflow_id)
 
         result = await db.execute(query)
         return list(result.scalars().all())

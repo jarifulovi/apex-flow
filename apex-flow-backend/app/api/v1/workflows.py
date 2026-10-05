@@ -38,6 +38,7 @@ async def create_workflow(
 async def list_workflows(
     project_id: Optional[uuid.UUID] = None,
     workflow_name: Optional[str] = None,
+    parent_workflow_id: Optional[uuid.UUID] = None,
     limit: int = 50,
     offset: int = 0,
     authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
@@ -45,12 +46,14 @@ async def list_workflows(
 ):
     """
     List workflow execution runs. Accepts Bearer JWT (Dashboard UI) or Project Key (Workers).
+    Supports optional filtering by project_id, workflow_name, or parent_workflow_id.
     """
     return await WorkflowService.list_workflow_runs(
         db=db,
         owner_id=authenticated_user_id,
         project_id=project_id,
         workflow_name=workflow_name,
+        parent_workflow_id=parent_workflow_id,
         limit=limit,
         offset=offset,
     )

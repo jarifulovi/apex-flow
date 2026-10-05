@@ -59,7 +59,19 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
                       <GitBranch size={13} />
                     </div>
                     <div>
-                      <p className="table-name font-mono">{name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="table-name font-mono">{name}</p>
+                        {wf.deduplication_id && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                            dedup: {wf.deduplication_id}
+                          </span>
+                        )}
+                        {wf.parent_workflow_id && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                            sub-workflow
+                          </span>
+                        )}
+                      </div>
                       <p className="table-meta">ID: {wf.id}</p>
                     </div>
                   </div>

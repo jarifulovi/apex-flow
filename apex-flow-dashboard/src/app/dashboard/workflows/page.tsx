@@ -13,8 +13,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+import { PaginationControls } from "@/components/shared/PaginationControls";
+
 const STATUS_FILTERS = ["all", "pending", "running", "completed", "failed", "cancelled"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
+const PAGE_SIZE = 10;
 
 export default function WorkflowsPage() {
   const { accessToken } = useAuth();
@@ -23,6 +26,7 @@ export default function WorkflowsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const loadWorkflows = useCallback(async () => {
     if (!accessToken) return;
@@ -41,15 +45,27 @@ export default function WorkflowsPage() {
     loadWorkflows();
   }, [loadWorkflows]);
 
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, currentProject?.id]);
+
   const filteredWorkflows = useMemo(() => {
     return workflows.filter((wf) => {
       const matchesStatus = statusFilter === "all" || wf.status === statusFilter;
       const q = searchQuery.toLowerCase().trim();
       const name = (wf.workflow_name || (wf.metadata?.name as string) || "").toLowerCase();
-      const matchesSearch = !q || name.includes(q) || wf.id.toLowerCase().includes(q);
+      const dedup = (wf.deduplication_id || "").toLowerCase();
+      const matchesSearch = !q || name.includes(q) || wf.id.toLowerCase().includes(q) || dedup.includes(q);
       return matchesStatus && matchesSearch;
     });
   }, [workflows, statusFilter, searchQuery]);
+
+  const totalPages = Math.ceil(filteredWorkflows.length / PAGE_SIZE) || 1;
+  const paginatedWorkflows = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredWorkflows.slice(start, start + PAGE_SIZE);
+  }, [filteredWorkflows, currentPage]);
 
   return (
     <div className="dashboard-page">
@@ -92,7 +108,7 @@ export default function WorkflowsPage() {
           <div className="relative w-full sm:w-64">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
             <Input
-              placeholder="Search by name or ID..."
+              placeholder="Search by name, ID, or dedup..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 bg-[#161620] border-white/10 text-zinc-100 text-xs focus:border-violet-500"
@@ -115,7 +131,17 @@ export default function WorkflowsPage() {
               <span>Loading workflows...</span>
             </div>
           ) : (
-            <WorkflowTable workflows={filteredWorkflows} />
+            <>
+              <WorkflowTable workflows={paginatedWorkflows} />
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                pageSize={PAGE_SIZE}
+                totalItems={filteredWorkflows.length}
+                loading={loading}
+              />
+            </>
           )}
         </section>
       </div>

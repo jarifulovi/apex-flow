@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Timer,
   Lock,
+  XCircle,
 } from "lucide-react";
 import type { WorkflowStep } from "@/features/steps/api";
 import { formatDurationMs } from "@/features/workflows/api";
@@ -17,10 +18,11 @@ const STATUS_CONFIG: Record<
   WorkflowStep["status"],
   { label: string; className: string; dot: string; icon: React.ElementType }
 > = {
-  queued:  { label: "Queued",  className: "status-badge status-badge--pending",   dot: "status-dot--pending",   icon: Clock },
-  running: { label: "Running", className: "status-badge status-badge--running",   dot: "status-dot--running",   icon: Loader2 },
+  queued: { label: "Queued", className: "status-badge status-badge--pending", dot: "status-dot--pending", icon: Clock },
+  running: { label: "Running", className: "status-badge status-badge--running", dot: "status-dot--running", icon: Loader2 },
   success: { label: "Success", className: "status-badge status-badge--completed", dot: "status-dot--completed", icon: CheckCircle2 },
-  failed:  { label: "Failed",  className: "status-badge status-badge--failed",    dot: "status-dot--failed",    icon: AlertTriangle },
+  failed: { label: "Failed", className: "status-badge status-badge--failed", dot: "status-dot--failed", icon: AlertTriangle },
+  cancelled: { label: "Cancelled", className: "status-badge status-badge--cancelled", dot: "status-dot--failed", icon: XCircle },
 };
 
 function formatDate(iso: string) {
@@ -97,9 +99,16 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
                       <Icon size={13} className={step.status === "running" ? "animate-spin" : ""} />
                     </div>
                     <div>
-                      <p className="table-name font-mono">{step.step_name}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="table-name font-mono">{step.step_name}</p>
+                        {step.step_order !== undefined && step.step_order !== null && (
+                          <span className="px-1.5 py-0.5 rounded bg-zinc-800/80 border border-white/10 text-[10px] text-violet-300 font-mono" title={`Step Order: ${step.step_order}`}>
+                            #{step.step_order}
+                          </span>
+                        )}
+                      </div>
                       {isLocked && (
-                        <span className="text-[10px] text-amber-400 font-mono flex items-center gap-1">
+                        <span className="text-[10px] text-amber-400 font-mono flex items-center gap-1 mt-0.5">
                           <Lock size={10} /> Locked by worker
                         </span>
                       )}

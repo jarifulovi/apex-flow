@@ -4,7 +4,8 @@ export interface WorkflowStep {
   id: string;
   workflow_run_id: string;
   step_name: string;
-  status: "queued" | "running" | "success" | "failed";
+  step_order?: number;
+  status: "queued" | "running" | "success" | "failed" | "cancelled";
   attempt_count: number;
   max_attempts: number;
   locked_until?: string | null;

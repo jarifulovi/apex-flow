@@ -16,7 +16,7 @@ export interface ActivityItem {
   id: string;
   workflowId: string;
   stepName: string;
-  status: "queued" | "running" | "success" | "failed";
+  status: "queued" | "running" | "success" | "failed" | "cancelled";
   timestamp: string;
   errorMessage?: string | null;
 }
