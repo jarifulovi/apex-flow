@@ -1,1 +1,10 @@
+# Virtual environment
 venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ApexFlow Durable Storage
+.apexflow_storage/
+*.log

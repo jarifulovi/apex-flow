@@ -2,6 +2,7 @@ import asyncio
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from apex_flow_sdk.adapters.storage import StorageResolver
 from apex_flow_sdk.core.exceptions import NonRetryableError, StepFailedError
 
 
@@ -42,7 +43,10 @@ class WorkflowContext:
 
                     if status == "success":
                         out_payload = step_info.get("output_payload", {})
-                        val = out_payload.get("result", out_payload) if isinstance(out_payload, dict) else out_payload
+                        resolved_out = await StorageResolver.resolve_payload(
+                            self.client.http_client, self.client.base_url, out_payload
+                        )
+                        val = resolved_out.get("result", resolved_out) if isinstance(resolved_out, dict) else resolved_out
                         self.completed_checkpoints[step_name] = val
         except Exception:
             pass  # Fallback to local execution if checkpoint query fails
@@ -55,6 +59,7 @@ class WorkflowContext:
         fn: Callable[[], Any],
         retries: int = 3,
         backoff_factor: float = 2.0,
+        input_payload: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """
         Execute a modular workflow step with durable checkpointing, retries, and control plane status tracking.
@@ -76,11 +81,16 @@ class WorkflowContext:
         step_id = self.active_step_ids.get(name)
 
         if not step_id:
+            raw_input = input_payload or {}
+            offloaded_input, _ = await StorageResolver.offload_if_needed(
+                self.client.http_client, self.client.base_url, raw_input
+            )
+
             step_payload = {
                 "workflow_id": str(self.workflow_run_id),
                 "step_name": name,
                 "step_order": self._step_counter,
-                "input_payload": {},
+                "input_payload": offloaded_input if isinstance(offloaded_input, dict) else {"result": offloaded_input},
                 "max_attempts": retries,
             }
             res = await self.client.http_client.post(
@@ -107,7 +117,11 @@ class WorkflowContext:
                 # Report success to control plane
                 output_data = {}
                 if self.store_payloads and output is not None:
-                    output_data = output if isinstance(output, dict) else {"result": output}
+                    raw_output = output if isinstance(output, dict) else {"result": output}
+                    offloaded, _ = await StorageResolver.offload_if_needed(
+                        self.client.http_client, self.client.base_url, raw_output
+                    )
+                    output_data = offloaded if isinstance(offloaded, dict) else {"result": offloaded}
 
                 report_payload = {
                     "step_id": step_id,

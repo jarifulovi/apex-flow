@@ -4,6 +4,7 @@ from typing import Dict, Optional, Tuple
 from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.adapters.storage.policy import PayloadPolicyManager
 from app.core.exceptions import EntityNotFoundException
 from app.models.step import WorkflowStep
 from app.models.workflow_run import WorkflowRun
@@ -23,13 +24,17 @@ class StepService:
             .values(status="running", started_at=func.coalesce(WorkflowRun.started_at, now))
         )
 
+        input_payload, _ = await PayloadPolicyManager.process_and_offload_if_needed(
+            payload.input_payload or {}
+        )
+
         step = WorkflowStep(
             workflow_run_id=payload.workflow_id,
             step_name=payload.step_name,
             step_order=payload.step_order,
             status="queued",
             max_attempts=payload.max_attempts,
-            input_payload=payload.input_payload or {},
+            input_payload=input_payload,
         )
         db.add(step)
         await db.commit()
@@ -54,7 +59,10 @@ class StepService:
         elif step.attempt_count == 0:
             step.attempt_count = 1
 
-        step.output_payload = payload.output_payload or {}
+        output_payload, _ = await PayloadPolicyManager.process_and_offload_if_needed(
+            payload.output_payload or {}
+        )
+        step.output_payload = output_payload
         step.error_message = payload.error_message
         step.locked_until = None
 

@@ -60,9 +60,20 @@ The SDK is **not merely a thin HTTP wrapper** for the control plane. It encapsul
 - Catches system termination signals (`SIGINT`, `SIGTERM`).
 - Completes currently executing in-flight step functions, notifies the control plane, and deregisters worker heartbeats before terminating process execution cleanly.
 
-### 7. Large Payload Offloading (The Pointer Pattern)
-- Direct HTTP request bodies carry small JSON payloads (< 64KB).
-- Large binary files or high-volume datasets are uploaded directly to Object Storage (S3 / Supabase Storage), transmitting only secure URL pointers (`{"$pointer": "..."}`) to the control plane.
+### 7. Transparent Large Payload Offloading & Pointer Resolution (`$apexflow_ref`)
+- Small JSON payloads ($\le 250\text{ KB}$) are transmitted directly to control plane API endpoints in inline JSON format.
+- Large JSON dictionaries or binary file payloads ($> 250\text{ KB}$) are transparently uploaded by the SDK (`StorageResolver`) via `POST /api/v1/storage/upload` before step registration or status reporting.
+- The SDK replaces large payloads with a lightweight `$apexflow_ref` pointer descriptor:
+  ```json
+  {
+    "$apexflow_ref": true,
+    "key": "payloads/20261005_abcdef123.json",
+    "size_bytes": 1048576,
+    "content_type": "application/json",
+    "provider": "local"
+  }
+  ```
+- When acquiring steps or loading step checkpoints, the SDK transparently dereferences `$apexflow_ref` pointers back into native dictionaries or bytes via `GET /api/v1/storage/download/{key}`, ensuring developer step code never needs explicit S3 API logic.
 
 ---
 

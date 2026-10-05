@@ -7,6 +7,7 @@ import uuid
 from typing import Any, Callable, Dict, List, Optional, Union
 import httpx
 
+from apex_flow_sdk.adapters.storage import StorageResolver
 from apex_flow_sdk.core.context import WorkflowContext
 
 
@@ -48,8 +49,6 @@ class ApexFlowClient:
         """Decorator to register a workflow definition under a unique name."""
 
         def decorator(func: Callable):
-            self._workflows[name] = func
-
             @functools.wraps(func)
             async def wrapper(ctx: WorkflowContext, *args, **kwargs):
                 try:
@@ -59,6 +58,7 @@ class ApexFlowClient:
                 except Exception as e:
                     raise e
 
+            self._workflows[name] = wrapper
             return wrapper
 
         return decorator
@@ -88,9 +88,14 @@ class ApexFlowClient:
         Trigger a new workflow execution run on the ApexFlow control plane.
         Supports deduplication_id for idempotency and parent_workflow_id for sub-workflows.
         """
+        raw_metadata = metadata or {}
+        offloaded_meta, _ = await StorageResolver.offload_if_needed(
+            self.http_client, self.base_url, raw_metadata
+        )
+
         payload: Dict[str, Any] = {
             "workflow_name": name,
-            "metadata": metadata or {},
+            "metadata": offloaded_meta if isinstance(offloaded_meta, dict) else {"result": offloaded_meta},
         }
         if deduplication_id:
             payload["deduplication_id"] = deduplication_id
@@ -176,7 +181,12 @@ class ApexFlowClient:
                         step_id = step_data["id"]
                         workflow_run_id = uuid.UUID(step_data["workflow_run_id"])
                         step_name = step_data["step_name"]
-                        input_payload = step_data["input_payload"]
+                        raw_input = step_data["input_payload"]
+
+                        # Auto-resolve offloaded $apexflow_ref pointers transparently
+                        input_payload = await StorageResolver.resolve_payload(
+                            self.http_client, self.base_url, raw_input
+                        )
 
                         print(f"⚡ Acquired step '{step_name}' (ID: {step_id})")
 
@@ -188,16 +198,21 @@ class ApexFlowClient:
                             else:
                                 result = handler(input_payload)
 
+                            output_val = result if isinstance(result, dict) else {"result": result}
+                            offloaded_output, _ = await StorageResolver.offload_if_needed(
+                                self.http_client, self.base_url, output_val
+                            )
+
                             report_payload = {
                                 "step_id": step_id,
                                 "status": "success",
-                                "output_payload": result if isinstance(result, dict) else {"result": result},
+                                "output_payload": offloaded_output if isinstance(offloaded_output, dict) else {"result": offloaded_output},
                             }
                             await self.http_client.post(f"{self.base_url}/api/v1/steps/report", json=report_payload)
                         elif self._workflows:
                             ctx = WorkflowContext(workflow_run_id=workflow_run_id, client=self, store_payloads=self.store_payloads)
                             for wf_name, wf_func in self._workflows.items():
-                                asyncio.create_task(wf_func(ctx, input_payload))
+                                await wf_func(ctx, input_payload)
 
                     elif res.status_code == 204:
                         pass

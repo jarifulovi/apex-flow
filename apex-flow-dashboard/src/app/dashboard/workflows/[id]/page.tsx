@@ -47,19 +47,25 @@ const STATUS_CONFIG: Record<
 
 function PayloadButton({ label, payload }: { label: string; payload?: Record<string, unknown> }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const isEmpty = !payload || Object.keys(payload).length === 0;
-
-  if (isEmpty) return null;
+  const isOffloaded = Boolean(
+    payload &&
+      typeof payload === "object" &&
+      (payload as Record<string, unknown>).$apexflow_ref === true
+  );
 
   return (
     <>
       <button
         onClick={() => setModalOpen(true)}
-        className="px-2 py-1 rounded bg-[#1b1b28] hover:bg-violet-600/20 border border-white/10 hover:border-violet-500/40 text-[11px] font-mono text-violet-300 hover:text-white flex items-center gap-1.5 transition-colors"
+        className={`px-2 py-1 rounded border text-[11px] font-mono flex items-center gap-1.5 transition-colors ${
+          isOffloaded
+            ? "bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 hover:text-amber-100 font-semibold"
+            : "bg-[#1b1b28] hover:bg-violet-600/20 border-white/10 hover:border-violet-500/40 text-violet-300 hover:text-white"
+        }`}
         title={`Inspect ${label}`}
       >
-        <FileCode2 size={12} className="text-violet-400" />
-        <span>{label}</span>
+        <FileCode2 size={12} className={isOffloaded ? "text-amber-400" : "text-violet-400"} />
+        <span>{isOffloaded ? `📦 ${label}` : label}</span>
       </button>
 
       {modalOpen && (
@@ -67,7 +73,7 @@ function PayloadButton({ label, payload }: { label: string; payload?: Record<str
           isOpen={modalOpen}
           onClose={() => setModalOpen(false)}
           title={label}
-          payload={payload}
+          payload={payload || {}}
         />
       )}
     </>

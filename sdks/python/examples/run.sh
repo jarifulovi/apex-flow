@@ -25,10 +25,11 @@ print_usage() {
     echo "  ecom        | order       : E-Commerce Order Processing Pipeline (ecommerce_order_processing.py)"
     echo "  subworkflow | sub         : Parent & Child Sub-Workflow Lineage Demo (--subworkflow)"
     echo "  lead        | worker      : AI Lead Ingestion & Worker Example (worker_example.py)"
+    echo "  large       | payload     : Large Payload Offloading Demo (large_payload_example.py)"
     echo ""
     echo "Examples:"
     echo "  ./run.sh ecom"
-    echo "  ./run.sh ecom --fail"
+    echo "  ./run.sh large"
     echo "  ./run.sh subworkflow"
     echo "================================================="
 }
@@ -48,6 +49,10 @@ case "$OPTION" in
     lead|worker)
         echo "Running AI Lead Processing Example..."
         "$PYTHON_BIN" "$SCRIPT_DIR/worker_example.py" "$@"
+        ;;
+    large|payload)
+        echo "Running Large Payload Offloading Example..."
+        "$PYTHON_BIN" "$SCRIPT_DIR/large_payload_example.py" "$@"
         ;;
     -h|--help|help)
         print_usage

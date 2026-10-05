@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Check, Copy, FileCode2, Search } from "lucide-react";
+import { Check, Copy, Download, FileCode2, HardDrive, Package, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 interface PayloadViewerModalProps {
@@ -27,6 +27,25 @@ export function PayloadViewerModal({
   const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState<"pretty" | "raw">("pretty");
   const [searchQuery, setSearchQuery] = useState("");
+
+  const isOffloaded = useMemo(() => {
+    return Boolean(
+      payload &&
+      typeof payload === "object" &&
+      (payload as Record<string, unknown>).$apexflow_ref === true
+    );
+  }, [payload]);
+
+  const offloadRef = useMemo(() => {
+    if (!isOffloaded) return null;
+    return payload as {
+      key: string;
+      size_bytes?: number;
+      content_type?: string;
+      filename?: string;
+      provider?: string;
+    };
+  }, [isOffloaded, payload]);
 
   const formattedJson = useMemo(() => {
     if (!payload || (typeof payload === "object" && Object.keys(payload as object).length === 0)) {
@@ -56,8 +75,24 @@ export function PayloadViewerModal({
     }
   };
 
+  const handleDownload = () => {
+    if (!offloadRef) return;
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    const downloadUrl = `${backendUrl}/api/v1/storage/download/${offloadRef.key}`;
+    window.open(downloadUrl, "_blank");
+  };
+
   const lineCount = formattedJson.split("\n").length;
   const byteSize = new Blob([formattedJson]).size;
+
+  const formattedSize = useMemo(() => {
+    if (!offloadRef?.size_bytes) return null;
+    const bytes = offloadRef.size_bytes;
+    if (bytes >= 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }, [offloadRef]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -65,19 +100,33 @@ export function PayloadViewerModal({
         <DialogHeader className="p-4 bg-[#181824] border-b border-white/10 flex flex-row items-center justify-between space-y-0">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-400">
-              <FileCode2 size={16} />
+              {isOffloaded ? <Package size={16} /> : <FileCode2 size={16} />}
             </div>
             <div>
               <DialogTitle className="text-sm font-semibold text-zinc-100">
                 {title}
               </DialogTitle>
               <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
-                {lineCount} {lineCount === 1 ? "line" : "lines"} • {byteSize} bytes
+                {isOffloaded
+                  ? `📦 Offloaded Storage (${formattedSize || byteSize + " B"})`
+                  : `${lineCount} ${lineCount === 1 ? "line" : "lines"} • ${byteSize} bytes`}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 mr-6">
+            {isOffloaded && (
+              <Button
+                onClick={handleDownload}
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 gap-1.5"
+              >
+                <Download size={12} />
+                <span>Download Payload</span>
+              </Button>
+            )}
+
             <div className="flex items-center bg-[#0d0d14] rounded-lg p-0.5 border border-white/10">
               <button
                 onClick={() => setMode("pretty")}
@@ -122,6 +171,20 @@ export function PayloadViewerModal({
           </div>
         </DialogHeader>
 
+        {isOffloaded && offloadRef && (
+          <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <HardDrive size={14} className="text-amber-400" />
+              <span>
+                Offloaded payload descriptor • Provider:{" "}
+                <strong className="text-amber-100 uppercase">{offloadRef.provider || "LOCAL"}</strong> •
+                Content: <code>{offloadRef.content_type || "application/octet-stream"}</code>
+              </span>
+            </div>
+            <span className="text-[11px] text-amber-400/80 font-mono">{formattedSize}</span>
+          </div>
+        )}
+
         {/* Search bar inside modal */}
         <div className="px-4 py-2 bg-[#14141f] border-b border-white/5 flex items-center gap-2">
           <Search size={13} className="text-zinc-500" />
@@ -147,3 +210,4 @@ export function PayloadViewerModal({
     </Dialog>
   );
 }
+

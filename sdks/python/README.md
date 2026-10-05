@@ -12,13 +12,26 @@ pip install apex-flow-sdk
 
 ---
 
+## ✨ Key Capabilities
+
+- 🔄 **Durable Checkpointing**: Steps are memoized on completion; workflow execution resumes at the exact failed step without re-executing completed steps.
+- ⚡ **Transparent Large Payload Offloading (`StorageResolver`)**: Payloads $> 250\text{ KB}$ are automatically offloaded to object storage (S3/MinIO) or local storage fallback via `StorageResolver`. The SDK transparently dereferences `$apexflow_ref` pointers back into native dictionaries or bytes.
+- 🛡️ **Resilient Retries & Error Classification**: Configurable exponential backoff retries with immediate abort support for `NonRetryableError`.
+- 🌲 **Parent-Child Lineage**: Launch child workflows via `ctx.child_workflow(...)` while maintaining full parent-child execution tracking.
+
+---
+
 ## 🚀 Quickstart Example
 
 ```python
 import asyncio
 from apex_flow_sdk import ApexFlowClient, WorkflowContext
 
-client = ApexFlowClient(base_url="http://localhost:8000")
+client = ApexFlowClient(
+    base_url="http://localhost:8000",
+    project_key="af_live_your_project_key",
+    worker_name="python-worker-01",
+)
 
 @client.workflow(name="process-lead-ai")
 async def process_lead_workflow(ctx: WorkflowContext, user_input: str):
@@ -36,4 +49,26 @@ async def process_lead_workflow(ctx: WorkflowContext, user_input: str):
     )
 
     return {"status": "completed", "crm_record": crm_record}
+```
+
+---
+
+## 🏃 CLI Examples Runner (`examples/`)
+
+Run interactive example walkthroughs using the built-in runner:
+
+```bash
+cd examples
+./run.sh ecom        # Order fulfillment workflow demo
+./run.sh ecom --fail # Failure simulation & retry demonstration
+./run.sh sub         # Parent & child sub-workflow lineage demo
+./run.sh large       # Large payload offloading demo (>250KB threshold)
+```
+
+---
+
+## 🧪 Running Automated E2E Tests
+
+```bash
+pytest tests/e2e/ -v
 ```

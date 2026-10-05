@@ -27,29 +27,47 @@ The backend **never executes user business logic**, nor does it store sensitive 
 
 ---
 
-## 🏗️ Architecture & Component Layers
+## 🏗️ Architecture & Component Layers (Ports & Adapters Pattern)
+
+The backend follows **Hexagonal Architecture (Ports & Adapters)** to decouple core workflow domain logic from infrastructure integrations:
 
 ```text
   [ Dashboard UI (Next.js) ]          [ SDK Worker Instances ]
              │                                   │
              ▼ (Bearer JWT)                      ▼ (X-ApexFlow-Project-Key)
-    ┌──────────────────────────────────────────────────┐
-    │           FastAPI API Router Layer               │
-    │     (workflows.py, steps.py, keys.py, health.py)  │
-    └────────────────────────┬─────────────────────────┘
-                             │
-                             ▼
-    ┌──────────────────────────────────────────────────┐
-    │               Service Engine Layer               │
-    │ (WorkflowService, StepService, QueueService, etc)│
-    └────────────────────────┬─────────────────────────┘
-                             │
-                             ▼
-    ┌──────────────────────────────────────────────────┐
-    │       Async SQLAlchemy ORM & Postgres DB         │
-    │    (Projects, Workers, WorkflowRuns, Steps)      │
-    └──────────────────────────────────────────────────┘
+    ┌──────────────────────────────────────────────────────────────────┐
+    │                     FastAPI API Router Layer                     │
+    │        (workflows.py, steps.py, storage.py, keys.py, health.py)  │
+    └────────────────────────────────┬─────────────────────────────────┘
+                                     │
+                                     ▼
+    ┌──────────────────────────────────────────────────────────────────┐
+    │                      Service Engine Layer                        │
+    │       (WorkflowService, StepService, QueueService, etc)          │
+    └─────────────────┬──────────────────────────────┬─────────────────┘
+                      │                              │
+                      ▼                              ▼
+    ┌──────────────────────────────────┐   ┌───────────────────────────┐
+    │   Infrastructure Adapters Layer  │   │  Async SQLAlchemy ORM     │
+    │    (`app/adapters/storage/`)     │   │   & PostgreSQL Database   │
+    │  - LocalStorage (Atomic Disk)    │   │  (WorkflowRuns, Steps)    │
+    │  - S3Storage (AWS / MinIO / R2)  │   │                           │
+    │  - PayloadPolicyManager (250KB)  │   │                           │
+    └──────────────────────────────────┘   └───────────────────────────┘
 ```
+
+### 🧱 Services vs. Adapters Design Pattern
+- **Services Layer (`app/services/`)**: Contains pure business logic and orchestrates domain entities (`WorkflowRun`, `WorkflowStep`, `ProjectKey`). It remains independent of third-party cloud SDKs or file storage mechanisms.
+- **Adapters Layer (`app/adapters/`)**: Implements infrastructure contracts ("Ports") to connect external systems to the control plane.
+  - **Implemented Adapters**:
+    - `adapters/storage/base.py`: `BaseStorageAdapter` interface (`save`, `get`, `exists`, `delete`).
+    - `adapters/storage/local_adapter.py`: `LocalStorageAdapter` with atomic disk writes (`write` + `os.fsync` + `os.replace`).
+    - `adapters/storage/s3_adapter.py`: `S3StorageAdapter` supporting AWS S3, MinIO, Cloudflare R2, and DigitalOcean Spaces.
+    - `adapters/storage/policy.py`: `PayloadPolicyManager` enforcing size thresholds and `$apexflow_ref` creation.
+  - **Future Pluggable Adapters**:
+    - `adapters/notifications/`: Slack, PagerDuty, Email, and Webhook dispatchers for workflow alerts.
+    - `adapters/metrics/`: Prometheus and Datadog telemetry exporters.
+    - `adapters/queues/`: Decoupled message brokers (Redis, SQS, NATS) if moving beyond Postgres row-locks.
 
 ---
 
@@ -60,25 +78,55 @@ The backend **never executes user business logic**, nor does it store sensitive 
 - Scoping row locks strictly to `workflow_steps` prevents table-level lock contention, allowing multiple workers to poll and execute steps for the same workflow run in parallel.
 - Automatically recovers stale step leases (`recover_stale_locks`) if a worker process crashes or loses network connectivity mid-execution.
 
-### 2. Fast $O(1)$ Step Status Reporting & Explicit SDK Completion
+### 2. Large Payload Offloading & 250KB Size Threshold Policy
+To maintain database performance and prevent `jsonb` table bloat:
+- **Small Payloads ($\le 250\text{ KB}$)**: Stored inline directly in PostgreSQL `jsonb`.
+- **Large Payloads / Files ($> 250\text{ KB}$)**: Automatically offloaded to object storage (S3/MinIO) or a durable local volume directory (`.apexflow_storage/payloads/`).
+- **DB Reference Descriptor (`$apexflow_ref`)**: Large payloads in `jsonb` are replaced with a canonical pointer descriptor:
+  ```json
+  {
+    "$apexflow_ref": true,
+    "key": "payloads/20261005_abcdef123.json",
+    "size_bytes": 1048576,
+    "content_type": "application/json",
+    "provider": "local",
+    "created_at": "2026-10-05T19:00:00Z"
+  }
+  ```
+
+### 3. Fast $O(1)$ Step Status Reporting & Explicit SDK Completion
 - Step execution reporting (`POST /api/v1/steps/report`) performs fast $O(1)$ status writes without expensive database subqueries or status guessing.
 - Workflow run completion is triggered explicitly by the SDK (`POST /api/v1/workflows/{id}/complete`) when top-level workflow code finishes, avoiding premature status flips.
 
-### 3. Idempotency & Deduplication Engine
+### 4. Idempotency & Deduplication Engine
 - Supports optional `deduplication_id` on workflow creation (`POST /api/v1/workflows`).
 - Enforces database-level idempotency via a filtered unique index (`idx_workflow_runs_dedup`), returning active workflow runs immediately if a duplicate trigger request is received.
 
-### 4. Interactive Workflow Control Actions
+### 5. Interactive Workflow Control Actions
 - **Cancel Workflow** (`POST /api/v1/workflows/{id}/cancel`): Immediately cancels an active workflow run and marks all pending/queued steps as `cancelled`.
 - **Restart Workflow** (`POST /api/v1/workflows/{id}/restart`): Resets failed or cancelled steps back to `queued` for worker pickup and re-activates the workflow run.
-
-### 5. Worker Registry & Heartbeat Tracking
-- Automatically registers workers and tracks active heartbeats (`name`, `worker_id`, `status`, `last_seen_at`) on every queue poll or step status report.
 
 ### 6. Dual Storage Retention & Pruning Strategy (`pg-cron`)
 To prevent database storage bloating on Supabase free-tier PostgreSQL databases:
 - **Soft Payload Pruning** (`prune_old_payloads`): Daily at 02:00 AM UTC, clears JSON payloads (`{}`) for completed runs older than 7 days, reducing disk usage by 90%+ while preserving run telemetry metrics for 30 days.
 - **Hard Batched Delete** (`prune_old_workflow_runs_batched`): Daily at 03:00 AM UTC, deletes terminal runs older than 30 days in non-blocking batches of 2,000 rows.
+
+---
+
+## ⚙️ Storage Configuration Settings
+
+Storage settings are configured in `app/core/config.py` via environment variables (`.env`):
+
+| Variable | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `PAYLOAD_MAX_INLINE_BYTES` | `int` | `262144` (250 KB) | Threshold size in bytes before offloading payload. |
+| `STORAGE_PROVIDER` | `str` | `"local"` | Storage provider: `"local"` or `"s3"`. |
+| `STORAGE_LOCAL_DIR` | `str` | `".apexflow_storage"` | Directory path for local volume storage fallback. |
+| `S3_BUCKET_NAME` | `str` | `None` | Target S3/MinIO bucket name. |
+| `S3_ENDPOINT_URL` | `str` | `None` | Endpoint URL for MinIO, Cloudflare R2, or custom S3 compatible APIs. |
+| `AWS_ACCESS_KEY_ID` | `str` | `None` | AWS / MinIO Access Key ID. |
+| `AWS_SECRET_ACCESS_KEY` | `str` | `None` | AWS / MinIO Secret Access Key. |
+| `AWS_REGION` | `str` | `"us-east-1"` | AWS Region name. |
 
 ---
 
@@ -114,3 +162,5 @@ The backend control plane enforces a **Two-Layer Authentication Model** (`app/ap
 | `/api/v1/steps` | `POST` | Project API Key | Queue a new step under a workflow run. |
 | `/api/v1/steps/poll` | `POST` | Project API Key | Poll next queued step using `FOR UPDATE SKIP LOCKED`. |
 | `/api/v1/steps/report` | `POST` | Project API Key | Report worker step execution result (`success` / `failed`). |
+| `/api/v1/storage/upload` | `POST` | Project API Key | Upload payload/file artifact and return `$apexflow_ref` descriptor. |
+| `/api/v1/storage/download/{key:path}` | `GET` | Bearer / Key | Stream binary content or offloaded JSON for a storage key. |

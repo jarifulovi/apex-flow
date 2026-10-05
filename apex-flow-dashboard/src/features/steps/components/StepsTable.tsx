@@ -38,32 +38,44 @@ function formatDate(iso: string) {
 
 function PayloadCell({
   payload,
+  label,
   stepName,
 }: {
-  payload: Record<string, unknown>;
+  payload?: Record<string, unknown>;
+  label: string;
   stepName: string;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const isEmpty = !payload || Object.keys(payload).length === 0;
-
-  if (isEmpty) return <span className="table-date">—</span>;
+  const isOffloaded = Boolean(
+    payload &&
+      typeof payload === "object" &&
+      (payload as Record<string, unknown>).$apexflow_ref === true
+  );
 
   return (
     <>
       <button
-        className="px-2 py-1 rounded bg-[#161622] hover:bg-violet-600/20 border border-white/10 text-[11px] text-violet-300 font-mono flex items-center gap-1.5 transition-colors"
+        className={`px-2 py-1 rounded border text-[11px] font-mono flex items-center gap-1.5 transition-colors ${
+          isOffloaded
+            ? "bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 hover:text-amber-100 font-semibold"
+            : isEmpty
+            ? "bg-[#161622]/60 hover:bg-[#161622] border-white/5 text-zinc-500 hover:text-zinc-300"
+            : "bg-[#161622] hover:bg-violet-600/20 border-white/10 text-violet-300 hover:text-white"
+        }`}
         onClick={() => setModalOpen(true)}
+        title={`Inspect ${label} Payload`}
       >
-        <FileCode2 size={12} />
-        <span>Payload</span>
+        <FileCode2 size={12} className={isOffloaded ? "text-amber-400" : isEmpty ? "text-zinc-500" : "text-violet-400"} />
+        <span>{isOffloaded ? `📦 ${label}` : label}</span>
       </button>
 
       {modalOpen && (
         <PayloadViewerModal
           isOpen={modalOpen}
           onClose={() => setModalOpen(false)}
-          title={`Output Payload • ${stepName}`}
-          payload={payload}
+          title={`${label} Payload • ${stepName}`}
+          payload={payload || {}}
         />
       )}
     </>
@@ -97,6 +109,7 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
               <th>Status</th>
               <th>Duration</th>
               <th>Attempts</th>
+              <th>Input</th>
               <th>Output</th>
               <th>Error</th>
               <th>Updated</th>
@@ -160,7 +173,10 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
                     </span>
                   </td>
                   <td>
-                    <PayloadCell payload={step.output_payload} stepName={step.step_name} />
+                    <PayloadCell payload={step.input_payload} label="Input" stepName={step.step_name} />
+                  </td>
+                  <td>
+                    <PayloadCell payload={step.output_payload} label="Output" stepName={step.step_name} />
                   </td>
                   <td>
                     {step.error_message ? (

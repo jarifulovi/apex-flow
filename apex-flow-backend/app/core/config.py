@@ -26,6 +26,16 @@ class Settings(BaseSettings):
     # Database connection URL (Required in environment / .env)
     DATABASE_URL: str
 
+    # Storage settings for offloaded payloads (>250KB or file artifacts)
+    PAYLOAD_MAX_INLINE_BYTES: int = 250 * 1024  # 250 KB
+    STORAGE_PROVIDER: str = "local"  # "local" or "s3"
+    STORAGE_LOCAL_DIR: str = ".apexflow_storage"
+    S3_BUCKET_NAME: Optional[str] = None
+    S3_ENDPOINT_URL: Optional[str] = None
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_REGION: str = "us-east-1"
+
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

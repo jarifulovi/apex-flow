@@ -32,3 +32,6 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# ApexFlow Storage Directory
+.apexflow_storage/

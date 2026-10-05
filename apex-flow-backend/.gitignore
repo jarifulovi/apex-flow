@@ -8,3 +8,7 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# ApexFlow Local Storage Volume
+.apexflow_storage/
+
