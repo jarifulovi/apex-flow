@@ -422,10 +422,30 @@ async def test_child_workflow_lineage(test_project_key: str):
         metadata={"item": "SKU-99"},
     )
 
-    # Verify child workflow detail has parent_workflow_id linked
+    # 1. Verify child workflow detail has parent_workflow_id linked
     child_detail_res = await client.http_client.get(f"/api/v1/workflows/{child_run_id}")
     assert child_detail_res.status_code == 200
     assert child_detail_res.json()["parent_workflow_id"] == str(parent_run_id)
+
+    # 2. Test Cascading Cancellation: Cancel parent workflow run
+    cancel_res = await client.http_client.post(f"/api/v1/workflows/{parent_run_id}/cancel")
+    assert cancel_res.status_code == 200
+    assert cancel_res.json()["status"] == "cancelled"
+
+    # Verify child sub-workflow status cascaded to cancelled
+    child_after_cancel = await client.http_client.get(f"/api/v1/workflows/{child_run_id}")
+    assert child_after_cancel.status_code == 200
+    assert child_after_cancel.json()["status"] == "cancelled"
+
+    # 3. Test Cascading Restart: Restart parent workflow run
+    restart_res = await client.http_client.post(f"/api/v1/workflows/{parent_run_id}/restart")
+    assert restart_res.status_code == 200
+    assert restart_res.json()["status"] == "running"
+
+    # Verify child sub-workflow status reset to pending
+    child_after_restart = await client.http_client.get(f"/api/v1/workflows/{child_run_id}")
+    assert child_after_restart.status_code == 200
+    assert child_after_restart.json()["status"] == "pending"
 
     await client.close()
 
