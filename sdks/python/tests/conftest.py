@@ -84,12 +84,14 @@ async def test_user_id(db: AsyncSession) -> AsyncGenerator[uuid.UUID, None]:
     )
     await db.commit()
 
-    yield user_id
-
-    # Clean up test user & related records
-    await db.execute(text("DELETE FROM projects WHERE owner_id = :user_id"), {"user_id": user_id})
-    await db.execute(text("DELETE FROM auth.users WHERE id = :user_id"), {"user_id": user_id})
-    await db.commit()
+    try:
+        yield user_id
+    finally:
+        # Guarantee cleanup of test user & related records
+        async with TestAsyncSessionLocal() as cleanup_session:
+            await cleanup_session.execute(text("DELETE FROM projects WHERE owner_id = :user_id"), {"user_id": user_id})
+            await cleanup_session.execute(text("DELETE FROM auth.users WHERE id = :user_id"), {"user_id": user_id})
+            await cleanup_session.commit()
 
 
 @pytest_asyncio.fixture
