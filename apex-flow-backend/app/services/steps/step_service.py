@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
-from sqlalchemy import func, select, update
+from typing import Dict, Optional, Tuple
+from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import EntityNotFoundException
@@ -93,9 +93,10 @@ class StepService:
         owner_id: uuid.UUID,
         project_id: Optional[uuid.UUID] = None,
         status_filter: Optional[str] = None,
+        search: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[WorkflowStep]:
+    ) -> Tuple[list[WorkflowStep], int]:
         """List workflow steps for specified owner/project with status filtering."""
         stmt = (
             select(WorkflowStep)
@@ -109,6 +110,51 @@ class StepService:
         if status_filter and status_filter.lower() != "all":
             stmt = stmt.where(WorkflowStep.status == status_filter.lower())
 
-        stmt = stmt.order_by(WorkflowStep.created_at.desc()).limit(limit).offset(offset)
+        if search:
+            pattern = f"%{search.lower().strip()}%"
+            stmt = stmt.where(
+                or_(
+                    func.lower(WorkflowStep.step_name).like(pattern),
+                    func.lower(cast(WorkflowStep.id, String)).like(pattern),
+                    func.lower(cast(WorkflowStep.workflow_run_id, String)).like(pattern),
+                )
+            )
+
+        # Count total items matching filter
+        subq = stmt.subquery()
+        count_stmt = select(func.count()).select_from(subq)
+        total_count_res = await db.execute(count_stmt)
+        total_count = total_count_res.scalar() or 0
+
+        # Fetch items
+        items_stmt = stmt.order_by(WorkflowStep.created_at.desc()).limit(limit).offset(offset)
+        result = await db.execute(items_stmt)
+        items = list(result.scalars().all())
+        return items, total_count
+
+    @staticmethod
+    async def get_step_status_counts(
+        db: AsyncSession,
+        owner_id: uuid.UUID,
+        project_id: Optional[uuid.UUID] = None,
+    ) -> Dict[str, int]:
+        """Get step count per status for filter tabs."""
+        stmt = (
+            select(WorkflowStep.status, func.count(WorkflowStep.id))
+            .join(WorkflowRun, WorkflowStep.workflow_run_id == WorkflowRun.id)
+            .join(WorkflowRun.project)
+            .where(WorkflowRun.project.has(owner_id=owner_id))
+            .group_by(WorkflowStep.status)
+        )
+        if project_id:
+            stmt = stmt.where(WorkflowRun.project_id == project_id)
+
         result = await db.execute(stmt)
-        return list(result.scalars().all())
+        counts: Dict[str, int] = {"all": 0, "queued": 0, "running": 0, "success": 0, "failed": 0, "cancelled": 0}
+        total = 0
+        for status_val, count_val in result.all():
+            if status_val in counts:
+                counts[status_val] = count_val
+            total += count_val
+        counts["all"] = total
+        return counts

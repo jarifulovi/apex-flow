@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
-from sqlalchemy import select, update
+from typing import Dict, List, Optional, Tuple
+from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -60,12 +60,51 @@ class WorkflowService:
         db: AsyncSession,
         owner_id: Optional[uuid.UUID] = None,
         project_id: Optional[uuid.UUID] = None,
+        status: Optional[str] = None,
         workflow_name: Optional[str] = None,
         parent_workflow_id: Optional[uuid.UUID] = None,
+        search: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> List[WorkflowRun]:
-        """List workflow runs with optional project, owner, or parent_workflow_id filtering."""
+    ) -> Tuple[List[WorkflowRun], int]:
+        """List workflow runs with optional project, status, owner, search, or parent_workflow_id filtering."""
+        filters = []
+        if project_id:
+            filters.append(WorkflowRun.project_id == project_id)
+        elif owner_id:
+            filters.append(WorkflowRun.project.has(owner_id=owner_id))
+
+        if status and status.lower() != "all":
+            filters.append(WorkflowRun.status == status.lower())
+
+        if workflow_name:
+            filters.append(WorkflowRun.workflow_name == workflow_name)
+
+        if parent_workflow_id:
+            filters.append(WorkflowRun.parent_workflow_id == parent_workflow_id)
+
+        if search:
+            pattern = f"%{search.lower().strip()}%"
+            filters.append(
+                or_(
+                    func.lower(WorkflowRun.workflow_name).like(pattern),
+                    func.lower(cast(WorkflowRun.id, String)).like(pattern),
+                    func.lower(func.coalesce(WorkflowRun.deduplication_id, "")).like(pattern),
+                )
+            )
+
+        # Count query
+        count_stmt = select(func.count(WorkflowRun.id))
+        if filters:
+            if owner_id and not project_id:
+                count_stmt = count_stmt.join(WorkflowRun.project).where(*filters)
+            else:
+                count_stmt = count_stmt.where(*filters)
+
+        total_count_res = await db.execute(count_stmt)
+        total_count = total_count_res.scalar() or 0
+
+        # Items query
         query = (
             select(WorkflowRun)
             .options(selectinload(WorkflowRun.steps))
@@ -73,20 +112,38 @@ class WorkflowService:
             .offset(offset)
             .limit(limit)
         )
-
-        if project_id:
-            query = query.where(WorkflowRun.project_id == project_id)
-        elif owner_id:
-            query = query.join(WorkflowRun.project).where(WorkflowRun.project.has(owner_id=owner_id))
-
-        if workflow_name:
-            query = query.where(WorkflowRun.workflow_name == workflow_name)
-
-        if parent_workflow_id:
-            query = query.where(WorkflowRun.parent_workflow_id == parent_workflow_id)
+        if filters:
+            if owner_id and not project_id:
+                query = query.join(WorkflowRun.project).where(*filters)
+            else:
+                query = query.where(*filters)
 
         result = await db.execute(query)
-        return list(result.scalars().all())
+        items = list(result.scalars().all())
+        return items, total_count
+
+    @staticmethod
+    async def get_workflow_status_counts(
+        db: AsyncSession,
+        owner_id: Optional[uuid.UUID] = None,
+        project_id: Optional[uuid.UUID] = None,
+    ) -> Dict[str, int]:
+        """Get workflow count per status for filter tabs."""
+        stmt = select(WorkflowRun.status, func.count(WorkflowRun.id)).group_by(WorkflowRun.status)
+        if project_id:
+            stmt = stmt.where(WorkflowRun.project_id == project_id)
+        elif owner_id:
+            stmt = stmt.join(WorkflowRun.project).where(WorkflowRun.project.has(owner_id=owner_id))
+
+        result = await db.execute(stmt)
+        counts: Dict[str, int] = {"all": 0, "pending": 0, "running": 0, "completed": 0, "failed": 0, "cancelled": 0}
+        total = 0
+        for status_val, count_val in result.all():
+            if status_val in counts:
+                counts[status_val] = count_val
+            total += count_val
+        counts["all"] = total
+        return counts
 
     @staticmethod
     async def get_workflow_run_by_id(

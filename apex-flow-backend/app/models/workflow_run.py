@@ -86,4 +86,6 @@ class WorkflowRun(Base):
 
     @property
     def steps_count(self) -> int:
-        return len(self.steps) if self.steps is not None else 0
+        if "steps" in self.__dict__ and self.steps is not None:
+            return len(self.steps)
+        return 0

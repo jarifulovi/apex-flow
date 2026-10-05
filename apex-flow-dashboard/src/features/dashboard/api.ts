@@ -25,15 +25,18 @@ export interface ActivityItem {
 }
 
 export async function fetchDashboardOverview(token: string, projectId?: string) {
-  const [workflows, steps, keys, workers, metrics] = await Promise.all([
-    getWorkflows(token, projectId, 100, 0).catch(() => []),
-    getSteps(token, projectId, "all", 100, 0).catch(() => []),
+  const [workflowsRes, stepsRes, keys, workers, metrics] = await Promise.all([
+    getWorkflows(token, projectId, "all", 100, 0).catch(() => ({ data: [], totalCount: 0 })),
+    getSteps(token, projectId, "all", 100, 0).catch(() => ({ data: [], totalCount: 0 })),
     getProjectKeys(token, projectId).catch(() => []),
     getWorkers(token, projectId).catch(() => []),
     projectId ? getProjectMetrics(token, projectId).catch(() => null) : Promise.resolve(null),
   ]);
 
-  const totalWorkflows = metrics?.total_runs ?? workflows.length;
+  const workflows = workflowsRes.data;
+  const steps = stepsRes.data;
+
+  const totalWorkflows = metrics?.total_runs ?? workflowsRes.totalCount;
   const activeSteps = steps.filter((s) => s.status === "queued" || s.status === "running").length;
   const completedSteps = steps.filter((s) => s.status === "success").length;
   const failedSteps = steps.filter((s) => s.status === "failed").length;

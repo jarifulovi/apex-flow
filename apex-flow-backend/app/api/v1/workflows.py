@@ -34,11 +34,31 @@ async def create_workflow(
     )
 
 
+from typing import Dict, List, Optional
+from fastapi import APIRouter, Depends, Response, status
+
+@router.get("/workflows/stats")
+async def get_workflow_stats(
+    project_id: Optional[uuid.UUID] = None,
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get workflow run status breakdown counts for filter tabs.
+    """
+    return await WorkflowService.get_workflow_status_counts(
+        db=db, owner_id=authenticated_user_id, project_id=project_id
+    )
+
+
 @router.get("/workflows", response_model=List[WorkflowResponse])
 async def list_workflows(
+    response: Response,
     project_id: Optional[uuid.UUID] = None,
+    status: Optional[str] = None,
     workflow_name: Optional[str] = None,
     parent_workflow_id: Optional[uuid.UUID] = None,
+    search: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
     authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
@@ -46,17 +66,22 @@ async def list_workflows(
 ):
     """
     List workflow execution runs. Accepts Bearer JWT (Dashboard UI) or Project Key (Workers).
-    Supports optional filtering by project_id, workflow_name, or parent_workflow_id.
+    Supports optional filtering by project_id, status, workflow_name, search, or parent_workflow_id.
     """
-    return await WorkflowService.list_workflow_runs(
+    items, total_count = await WorkflowService.list_workflow_runs(
         db=db,
         owner_id=authenticated_user_id,
         project_id=project_id,
+        status=status,
         workflow_name=workflow_name,
         parent_workflow_id=parent_workflow_id,
+        search=search,
         limit=limit,
         offset=offset,
     )
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    return items
 
 
 @router.get("/workflows/{workflow_id}", response_model=WorkflowDetailResponse)

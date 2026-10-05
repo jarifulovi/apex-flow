@@ -1,4 +1,43 @@
-import { fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth, fetchWithMeta, type PaginatedResponse } from "@/lib/api";
+
+export async function getWorkflows(
+  token: string,
+  projectId?: string,
+  status?: string,
+  limit = 10,
+  offset = 0,
+  search?: string,
+  parentWorkflowId?: string
+): Promise<PaginatedResponse<Workflow[]>> {
+  const query = new URLSearchParams({
+    limit: limit.toString(),
+    offset: offset.toString(),
+  });
+  if (projectId) {
+    query.set("project_id", projectId);
+  }
+  if (status && status !== "all") {
+    query.set("status", status);
+  }
+  if (search && search.trim()) {
+    query.set("search", search.trim());
+  }
+  if (parentWorkflowId) {
+    query.set("parent_workflow_id", parentWorkflowId);
+  }
+  return fetchWithMeta<Workflow[]>(`/api/v1/workflows?${query.toString()}`, token);
+}
+
+export async function getWorkflowStats(
+  token: string,
+  projectId?: string
+): Promise<Record<string, number>> {
+  const query = new URLSearchParams();
+  if (projectId) {
+    query.set("project_id", projectId);
+  }
+  return fetchWithAuth<Record<string, number>>(`/api/v1/workflows/stats?${query.toString()}`, token);
+}
 
 export interface WorkflowStepSummary {
   id: string;
@@ -50,25 +89,7 @@ export function formatDurationMs(startedAt?: string | null, completedAt?: string
   return `${mins}m ${secs}s`;
 }
 
-export async function getWorkflows(
-  token: string,
-  projectId?: string,
-  limit = 50,
-  offset = 0,
-  parentWorkflowId?: string
-): Promise<Workflow[]> {
-  const query = new URLSearchParams({
-    limit: limit.toString(),
-    offset: offset.toString(),
-  });
-  if (projectId) {
-    query.set("project_id", projectId);
-  }
-  if (parentWorkflowId) {
-    query.set("parent_workflow_id", parentWorkflowId);
-  }
-  return fetchWithAuth<Workflow[]>(`/api/v1/workflows?${query.toString()}`, token);
-}
+
 
 export async function getWorkflowDetail(token: string, workflowId: string): Promise<WorkflowDetail> {
   return fetchWithAuth<WorkflowDetail>(`/api/v1/workflows/${workflowId}`, token);

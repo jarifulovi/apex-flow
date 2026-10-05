@@ -20,10 +20,26 @@ from app.services.steps import QueueService, StepService
 router = APIRouter()
 
 
+@router.get("/steps/stats")
+async def get_step_stats(
+    project_id: Optional[uuid.UUID] = None,
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get execution step status breakdown counts for filter tabs.
+    """
+    return await StepService.get_step_status_counts(
+        db=db, owner_id=authenticated_user_id, project_id=project_id
+    )
+
+
 @router.get("/steps", response_model=list[WorkflowStepResponse])
 async def list_steps(
+    response: Response,
     project_id: Optional[uuid.UUID] = None,
     status: Optional[str] = None,
+    search: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
     authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
@@ -32,14 +48,18 @@ async def list_steps(
     """
     List workflow execution steps. Accepts Bearer JWT (Dashboard UI) or Project Key (Workers).
     """
-    return await StepService.list_steps(
+    items, total_count = await StepService.list_steps(
         db=db,
         owner_id=authenticated_user_id,
         project_id=project_id,
         status_filter=status,
+        search=search,
         limit=limit,
         offset=offset,
     )
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
+    return items
 
 
 @router.post("/steps", response_model=WorkflowStepResponse, status_code=status.HTTP_201_CREATED)
