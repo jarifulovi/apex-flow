@@ -2,14 +2,19 @@ import mimetypes
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
-from fastapi import APIRouter, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from app.adapters.storage.policy import PayloadPolicyManager, get_storage_adapter
+from app.api.deps import get_current_user_from_any_auth
+from app.core.database import get_db
 
 router = APIRouter(prefix="/storage", tags=["Storage"])
 
 
 @router.post("/upload", response_model=Dict[str, Any])
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    auth_user: uuid.UUID = Depends(get_current_user_from_any_auth),
+):
     """Upload a file/payload artifact to durable storage and get an $apexflow_ref descriptor."""
     content = await file.read()
     if not content:
@@ -36,7 +41,10 @@ async def upload_file(file: UploadFile = File(...)):
 
 
 @router.get("/download/{storage_key:path}")
-async def download_file(storage_key: str):
+async def download_file(
+    storage_key: str,
+    auth_user: uuid.UUID = Depends(get_current_user_from_any_auth),
+):
     """Retrieve binary content or offloaded JSON for a given storage key."""
     adapter = get_storage_adapter()
     try:

@@ -29,8 +29,10 @@ class QueueService:
                 WorkflowStep.locked_until.is_not(None),
                 WorkflowStep.locked_until < now,
             )
-            .with_for_update(of=WorkflowStep, skip_locked=True)
         )
+        if db.bind and db.bind.dialect.name == "postgresql":
+            stale_query = stale_query.with_for_update(of=WorkflowStep, skip_locked=True)
+
         result = await db.execute(stale_query)
         stale_steps = list(result.scalars().all())
 
@@ -96,23 +98,35 @@ class QueueService:
         if poll_payload.step_names:
             stmt = stmt.where(WorkflowStep.step_name.in_(poll_payload.step_names))
 
-        stmt = (
-            stmt.order_by(WorkflowStep.created_at.asc())
-            .limit(1)
-            .with_for_update(of=WorkflowStep, skip_locked=True)
-        )
+        stmt = stmt.order_by(WorkflowStep.created_at.asc()).limit(1)
+        if db.bind and db.bind.dialect.name == "postgresql":
+            stmt = stmt.with_for_update(of=WorkflowStep, skip_locked=True)
+
         result = await db.execute(stmt)
         step = result.scalar_one_or_none()
 
         if not step:
             return None
 
-        # 4. Acquire step: transition to running, set started_at and locked_until lease lock
+        # 4. Acquire step atomically: transition to running only if still 'queued'
         lock_duration = timedelta(seconds=poll_payload.lock_duration_seconds)
-        step.status = "running"
-        step.attempt_count += 1
-        step.started_at = step.started_at or now
-        step.locked_until = now + lock_duration
+        locked_until_time = now + lock_duration
+
+        acquire_stmt = (
+            update(WorkflowStep)
+            .where(WorkflowStep.id == step.id, WorkflowStep.status == "queued")
+            .values(
+                status="running",
+                attempt_count=step.attempt_count + 1,
+                started_at=func.coalesce(WorkflowStep.started_at, now),
+                locked_until=locked_until_time,
+            )
+        )
+        acquire_res = await db.execute(acquire_stmt)
+        if acquire_res.rowcount == 0:
+            # Step was acquired by a concurrent worker between SELECT and UPDATE
+            await db.rollback()
+            return None
 
         # 5. Update parent workflow run state to running if pending (non-blocking atomic update)
         await db.execute(

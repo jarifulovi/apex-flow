@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import os
+import random
 import signal
 import sys
 import uuid
@@ -15,7 +16,7 @@ class ApexFlowClient:
     """
     Main developer client for ApexFlow SDK.
     Provides @client.workflow and @client.step decorators, workflow trigger/cancel/restart capabilities,
-    and targeted worker polling with durable checkpointing.
+    and targeted worker polling with durable checkpointing and resilient retry logic.
     """
 
     def __init__(
@@ -44,6 +45,38 @@ class ApexFlowClient:
             headers["X-ApexFlow-Project-Key"] = self.project_key
 
         self.http_client = httpx.AsyncClient(timeout=30.0, headers=headers)
+
+    async def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        max_retries: int = 3,
+        initial_delay: float = 0.5,
+        max_delay: float = 10.0,
+        backoff_factor: float = 2.0,
+        **kwargs,
+    ) -> httpx.Response:
+        """
+        Execute HTTP request with exponential backoff and randomized jitter on network drops or 5xx errors.
+        """
+        attempt = 0
+        while True:
+            try:
+                res = await self.http_client.request(method, url, **kwargs)
+                if res.status_code in (500, 502, 503, 504) and attempt < max_retries:
+                    attempt += 1
+                    delay = min(max_delay, initial_delay * (backoff_factor ** (attempt - 1)))
+                    jitter = random.uniform(0.75, 1.25)
+                    await asyncio.sleep(delay * jitter)
+                    continue
+                return res
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as e:
+                if attempt >= max_retries:
+                    raise e
+                attempt += 1
+                delay = min(max_delay, initial_delay * (backoff_factor ** (attempt - 1)))
+                jitter = random.uniform(0.75, 1.25)
+                await asyncio.sleep(delay * jitter)
 
     def workflow(self, name: str):
         """Decorator to register a workflow definition under a unique name."""
@@ -102,7 +135,7 @@ class ApexFlowClient:
         if parent_workflow_id:
             payload["parent_workflow_id"] = str(parent_workflow_id)
 
-        res = await self.http_client.post(f"{self.base_url}/api/v1/workflows", json=payload)
+        res = await self._request_with_retry("POST", f"{self.base_url}/api/v1/workflows", json=payload)
         res.raise_for_status()
         workflow_data = res.json()
         return uuid.UUID(workflow_data["id"])
@@ -111,7 +144,7 @@ class ApexFlowClient:
         """
         Explicitly mark workflow execution run as completed on control plane.
         """
-        res = await self.http_client.post(f"{self.base_url}/api/v1/workflows/{workflow_run_id}/complete")
+        res = await self._request_with_retry("POST", f"{self.base_url}/api/v1/workflows/{workflow_run_id}/complete")
         res.raise_for_status()
         return res.json()
 
@@ -119,7 +152,7 @@ class ApexFlowClient:
         """
         Cancel an active workflow run and mark queued steps as cancelled.
         """
-        res = await self.http_client.post(f"{self.base_url}/api/v1/workflows/{workflow_run_id}/cancel")
+        res = await self._request_with_retry("POST", f"{self.base_url}/api/v1/workflows/{workflow_run_id}/cancel")
         res.raise_for_status()
         return res.json()
 
@@ -127,7 +160,7 @@ class ApexFlowClient:
         """
         Reset failed or cancelled steps to queued and restart workflow run.
         """
-        res = await self.http_client.post(f"{self.base_url}/api/v1/workflows/{workflow_run_id}/restart")
+        res = await self._request_with_retry("POST", f"{self.base_url}/api/v1/workflows/{workflow_run_id}/restart")
         res.raise_for_status()
         return res.json()
 
@@ -147,7 +180,7 @@ class ApexFlowClient:
     ):
         """
         Start an asynchronous worker loop polling for queued steps from the control plane.
-        Includes graceful signal shutdown (SIGINT / SIGTERM).
+        Includes graceful signal shutdown (SIGINT / SIGTERM) and network drop auto-retry.
         """
         interval = poll_interval if poll_interval is not None else self.poll_interval_seconds
         print(f"🚀 ApexFlow Worker '{self.worker_name}' started. Polling control plane at '{self.base_url}'...")
@@ -166,6 +199,8 @@ class ApexFlowClient:
         except (NotImplementedError, ValueError):
             pass  # Signal handlers not supported on Windows or outside main thread
 
+        consecutive_poll_errors = 0
+
         try:
             while not stop_event.is_set():
                 try:
@@ -175,6 +210,9 @@ class ApexFlowClient:
                         "lock_duration_seconds": 300,
                     }
                     res = await self.http_client.post(f"{self.base_url}/api/v1/steps/poll", json=poll_payload)
+
+                    if res.status_code in (200, 204):
+                        consecutive_poll_errors = 0  # Reset backoff on success
 
                     if res.status_code == 200 and res.json():
                         step_data = res.json()
@@ -208,7 +246,7 @@ class ApexFlowClient:
                                 "status": "success",
                                 "output_payload": offloaded_output if isinstance(offloaded_output, dict) else {"result": offloaded_output},
                             }
-                            await self.http_client.post(f"{self.base_url}/api/v1/steps/report", json=report_payload)
+                            await self._request_with_retry("POST", f"{self.base_url}/api/v1/steps/report", json=report_payload)
                         elif self._workflows:
                             ctx = WorkflowContext(workflow_run_id=workflow_run_id, client=self, store_payloads=self.store_payloads)
                             for wf_name, wf_func in self._workflows.items():
@@ -216,9 +254,21 @@ class ApexFlowClient:
 
                     elif res.status_code == 204:
                         pass
+                    else:
+                        consecutive_poll_errors += 1
+
                 except Exception as e:
                     if not stop_event.is_set():
-                        print(f"⚠️ Worker polling error: {e}")
+                        consecutive_poll_errors += 1
+                        error_delay = min(15.0, interval * (2.0 ** min(consecutive_poll_errors, 5)))
+                        jitter = random.uniform(0.8, 1.2)
+                        sleep_time = error_delay * jitter
+                        print(f"⚠️ Worker polling network issue ({consecutive_poll_errors}x): {e}. Retrying in {sleep_time:.1f}s...")
+                        try:
+                            await asyncio.wait_for(stop_event.wait(), timeout=sleep_time)
+                        except asyncio.TimeoutError:
+                            pass
+                        continue
 
                 if run_once or stop_event.is_set():
                     break

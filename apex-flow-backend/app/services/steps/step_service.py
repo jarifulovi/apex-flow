@@ -67,13 +67,17 @@ class StepService:
         step.locked_until = None
 
         if payload.status == "failed":
-            step.status = "failed"
-            step.completed_at = now
-            await db.execute(
-                update(WorkflowRun)
-                .where(WorkflowRun.id == step.workflow_run_id)
-                .values(status="failed", completed_at=now)
-            )
+            if step.attempt_count < step.max_attempts:
+                step.status = "queued"
+                step.locked_until = None
+            else:
+                step.status = "failed"
+                step.completed_at = now
+                await db.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id == step.workflow_run_id)
+                    .values(status="failed", completed_at=now)
+                )
         else:
             step.status = "success"
             step.completed_at = now
