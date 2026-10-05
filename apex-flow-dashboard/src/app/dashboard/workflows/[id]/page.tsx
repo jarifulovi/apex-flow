@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, use } from "react";
+import { useEffect, useState, useCallback, use } from "react";
 import Link from "next/link";
 import { Header } from "@/components/shared/Header";
 import {
@@ -11,9 +11,6 @@ import {
   AlertTriangle,
   Loader2,
   Timer,
-  ChevronDown,
-  ChevronUp,
-  ChevronRight,
   ShieldAlert,
   RotateCcw,
   Ban,
@@ -75,163 +72,6 @@ function PayloadButton({ label, payload }: { label: string; payload?: Record<str
   );
 }
 
-// Grouping types & helper
-type TimelineNode =
-  | { type: "single"; step: WorkflowStepSummary; index: number }
-  | {
-      type: "group";
-      groupId: string;
-      status: "success";
-      steps: WorkflowStepSummary[];
-      startIndex: number;
-      endIndex: number;
-    };
-
-function groupTimelineSteps(steps: WorkflowStepSummary[]): TimelineNode[] {
-  const nodes: TimelineNode[] = [];
-  let currentGroup: WorkflowStepSummary[] = [];
-  let groupStartIndex = 0;
-
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    // Group continuous 'success' steps if there are 2 or more
-    if (step.status === "success") {
-      if (currentGroup.length === 0) {
-        groupStartIndex = i;
-      }
-      currentGroup.push(step);
-    } else {
-      if (currentGroup.length > 1) {
-        nodes.push({
-          type: "group",
-          groupId: `group-${groupStartIndex}-${i - 1}`,
-          status: "success",
-          steps: [...currentGroup],
-          startIndex: groupStartIndex,
-          endIndex: i - 1,
-        });
-      } else if (currentGroup.length === 1) {
-        nodes.push({
-          type: "single",
-          step: currentGroup[0],
-          index: groupStartIndex,
-        });
-      }
-      currentGroup = [];
-      nodes.push({
-        type: "single",
-        step,
-        index: i,
-      });
-    }
-  }
-
-  if (currentGroup.length > 1) {
-    nodes.push({
-      type: "group",
-      groupId: `group-${groupStartIndex}-${steps.length - 1}`,
-      status: "success",
-      steps: [...currentGroup],
-      startIndex: groupStartIndex,
-      endIndex: steps.length - 1,
-    });
-  } else if (currentGroup.length === 1) {
-    nodes.push({
-      type: "single",
-      step: currentGroup[0],
-      index: groupStartIndex,
-    });
-  }
-
-  return nodes;
-}
-
-function SingleStepCard({
-  step,
-  index,
-  onInspectError,
-}: {
-  step: WorkflowStepSummary;
-  index: number;
-  onInspectError: (stepName: string, errorMessage: string) => void;
-}) {
-  const sCfg = STATUS_CONFIG[step.status] || STATUS_CONFIG.queued;
-  const Icon = sCfg.icon;
-  const stepDuration = formatDurationMs(step.started_at || step.created_at, step.completed_at);
-
-  return (
-    <div className="relative group">
-      {/* Timeline Node Dot */}
-      <div
-        className={`absolute -left-[1.85rem] top-2.5 h-3.5 w-3.5 rounded-full border-2 border-[#111118] flex items-center justify-center ${
-          step.status === "success"
-            ? "bg-emerald-400"
-            : step.status === "failed"
-            ? "bg-red-500 animate-pulse"
-            : step.status === "cancelled"
-            ? "bg-amber-400"
-            : step.status === "running"
-            ? "bg-cyan-400 animate-ping"
-            : "bg-amber-400"
-        }`}
-      />
-
-      <div className="bg-[#161620] border border-white/10 rounded-xl p-3 sm:p-3.5 transition-all hover:border-violet-500/40">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2.5">
-            <span className="text-[11px] font-mono font-bold text-violet-400 bg-violet-950/60 border border-violet-500/30 px-2 py-0.5 rounded">
-              Step #{index + 1}
-            </span>
-            <h3 className="text-xs sm:text-sm font-semibold text-zinc-100 font-mono">
-              {step.step_name}
-            </h3>
-          </div>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-zinc-400 font-mono flex items-center gap-1">
-              <Timer size={12} className="text-zinc-500" />
-              {stepDuration}
-            </span>
-            <span className="text-xs text-zinc-400 font-mono">
-              Attempts: {step.attempt_count}/{step.max_attempts}
-            </span>
-            <span className={sCfg.className}>
-              <Icon size={12} className={step.status === "running" ? "animate-spin mr-1" : "mr-1"} />
-              {sCfg.label}
-            </span>
-
-            <div className="flex items-center gap-1.5 ml-1">
-              <PayloadButton label="Input JSON" payload={step.input_payload} />
-              <PayloadButton label="Output JSON" payload={step.output_payload} />
-            </div>
-          </div>
-        </div>
-
-        {step.error_message && (
-          <div className="mt-2.5 p-2.5 rounded-lg bg-red-950/40 border border-red-500/30 text-xs text-red-300 font-mono flex items-start justify-between gap-3">
-            <div>
-              <span className="font-bold block text-red-400 mb-0.5 flex items-center gap-1.5">
-                <AlertTriangle size={13} />
-                Execution Failure:
-              </span>
-              <span className="line-clamp-2">{step.error_message}</span>
-            </div>
-            <Button
-              onClick={() => onInspectError(step.step_name, step.error_message!)}
-              variant="outline"
-              size="sm"
-              className="h-6 text-[11px] border-red-500/40 text-red-300 hover:text-white bg-red-900/40 shrink-0 gap-1 px-2"
-            >
-              <Maximize2 size={11} />
-              <span>Inspect Error</span>
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function WorkflowDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const workflowId = resolvedParams.id;
@@ -241,23 +81,8 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Expanded group IDs state
-  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
-
   // Inspector modal state
   const [selectedErrorStep, setSelectedErrorStep] = useState<{ stepName: string; errorMessage: string } | null>(null);
-
-  const toggleGroup = useCallback((groupId: string) => {
-    setExpandedGroupIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
-    });
-  }, []);
 
   const loadDetail = useCallback(async () => {
     if (!accessToken || !workflowId) return;
@@ -277,11 +102,6 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
   useEffect(() => {
     loadDetail();
   }, [loadDetail]);
-
-  const timelineNodes = useMemo(() => {
-    if (!detail?.steps) return [];
-    return groupTimelineSteps(detail.steps);
-  }, [detail?.steps]);
 
   const handleCancel = async () => {
     if (!accessToken || !workflowId || actionLoading) return;
@@ -463,67 +283,85 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
             </div>
           ) : (
             <div className="relative pl-6 space-y-3 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-white/10">
-              {timelineNodes.map((node) => {
-                if (node.type === "single") {
-                  return (
-                    <SingleStepCard
-                      key={node.step.id}
-                      step={node.step}
-                      index={node.index}
-                      onInspectError={(name, msg) =>
-                        setSelectedErrorStep({ stepName: name, errorMessage: msg })
-                      }
-                    />
-                  );
-                }
-
-                const isExpanded = expandedGroupIds.has(node.groupId);
+              {detail.steps.map((step: WorkflowStepSummary, index: number) => {
+                const sCfg = STATUS_CONFIG[step.status] || STATUS_CONFIG.queued;
+                const Icon = sCfg.icon;
+                const stepDuration = formatDurationMs(step.started_at || step.created_at, step.completed_at);
 
                 return (
-                  <div key={node.groupId} className="relative space-y-3">
-                    {/* Collapsed Group Header Node */}
-                    <div className="relative">
-                      <div className="absolute -left-[1.85rem] top-2.5 h-3.5 w-3.5 rounded-full border-2 border-[#111118] bg-emerald-400" />
-                      <div className="bg-[#14141e] border border-emerald-500/20 rounded-xl p-3 flex items-center justify-between transition-all hover:border-emerald-500/40">
+                  <div key={step.id} className="relative group">
+                    {/* Timeline Node Dot */}
+                    <div
+                      className={`absolute -left-[1.85rem] top-2.5 h-3.5 w-3.5 rounded-full border-2 border-[#111118] flex items-center justify-center ${
+                        step.status === "success"
+                          ? "bg-emerald-400"
+                          : step.status === "failed"
+                          ? "bg-red-500 animate-pulse"
+                          : step.status === "cancelled"
+                          ? "bg-amber-400"
+                          : step.status === "running"
+                          ? "bg-cyan-400 animate-ping"
+                          : "bg-amber-400"
+                      }`}
+                    />
+
+                    <div className="bg-[#161620] border border-white/10 rounded-xl p-3 sm:p-3.5 transition-all hover:border-violet-500/40">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-2.5">
-                          <div className="p-1 rounded bg-emerald-500/10 text-emerald-400">
-                            <CheckCircle2 size={15} />
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold text-zinc-200 font-mono">
-                              {node.steps.length} Consecutive Steps Succeeded
-                            </p>
-                            <p className="text-[11px] text-zinc-400 font-mono">
-                              Steps #{node.startIndex + 1} to #{node.endIndex + 1}
-                            </p>
-                          </div>
+                          <span className="text-[11px] font-mono font-bold text-violet-400 bg-violet-950/60 border border-violet-500/30 px-2 py-0.5 rounded">
+                            Step #{step.step_order || index + 1}
+                          </span>
+                          <h3 className="text-xs sm:text-sm font-semibold text-zinc-100 font-mono">
+                            {step.step_name}
+                          </h3>
                         </div>
 
-                        <button
-                          onClick={() => toggleGroup(node.groupId)}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-xs font-mono font-medium text-emerald-300 hover:text-white flex items-center gap-1.5 transition-colors"
-                        >
-                          <span>{isExpanded ? "Collapse Group" : `Expand ${node.steps.length} Steps`}</span>
-                          {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                        </button>
-                      </div>
-                    </div>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className="text-xs text-zinc-400 font-mono flex items-center gap-1">
+                            <Timer size={12} className="text-zinc-500" />
+                            {stepDuration}
+                          </span>
+                          <span className="text-xs text-zinc-400 font-mono">
+                            Attempts: {step.attempt_count}/{step.max_attempts}
+                          </span>
+                          <span className={sCfg.className}>
+                            <Icon size={12} className={step.status === "running" ? "animate-spin mr-1" : "mr-1"} />
+                            {sCfg.label}
+                          </span>
 
-                    {/* Rendered Individual Steps when Group is Expanded */}
-                    {isExpanded && (
-                      <div className="pl-4 space-y-3 border-l border-emerald-500/20 ml-1">
-                        {node.steps.map((subStep, subIdx) => (
-                          <SingleStepCard
-                            key={subStep.id}
-                            step={subStep}
-                            index={node.startIndex + subIdx}
-                            onInspectError={(name, msg) =>
-                              setSelectedErrorStep({ stepName: name, errorMessage: msg })
-                            }
-                          />
-                        ))}
+                          <div className="flex items-center gap-1.5 ml-1">
+                            <PayloadButton label="Input JSON" payload={step.input_payload} />
+                            <PayloadButton label="Output JSON" payload={step.output_payload} />
+                          </div>
+                        </div>
                       </div>
-                    )}
+
+                      {step.error_message && (
+                        <div className="mt-2.5 p-2.5 rounded-lg bg-red-950/40 border border-red-500/30 text-xs text-red-300 font-mono flex items-start justify-between gap-3">
+                          <div>
+                            <span className="font-bold block text-red-400 mb-0.5 flex items-center gap-1.5">
+                              <AlertTriangle size={13} />
+                              Execution Failure:
+                            </span>
+                            <span className="line-clamp-2">{step.error_message}</span>
+                          </div>
+                          <Button
+                            onClick={() =>
+                              setSelectedErrorStep({
+                                stepName: step.step_name,
+                                errorMessage: step.error_message!,
+                              })
+                            }
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-[11px] border-red-500/40 text-red-300 hover:text-white bg-red-900/40 shrink-0 gap-1 px-2"
+                          >
+                            <Maximize2 size={11} />
+                            <span>Inspect Error</span>
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
