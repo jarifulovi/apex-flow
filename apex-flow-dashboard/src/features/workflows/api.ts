@@ -4,6 +4,7 @@ export interface WorkflowStepSummary {
   id: string;
   workflow_run_id: string;
   step_name: string;
+  step_order?: number;
   status: "queued" | "running" | "success" | "failed" | "cancelled";
   attempt_count: number;
   max_attempts: number;
@@ -23,6 +24,8 @@ export interface Workflow {
   workflow_name: string;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   metadata: Record<string, unknown>;
+  deduplication_id?: string | null;
+  parent_workflow_id?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
   steps_count?: number;

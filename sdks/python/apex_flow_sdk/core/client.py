@@ -81,14 +81,22 @@ class ApexFlowClient:
         self,
         name: str,
         metadata: Optional[Dict[str, Any]] = None,
+        deduplication_id: Optional[str] = None,
+        parent_workflow_id: Optional[Union[str, uuid.UUID]] = None,
     ) -> uuid.UUID:
         """
         Trigger a new workflow execution run on the ApexFlow control plane.
+        Supports deduplication_id for idempotency and parent_workflow_id for sub-workflows.
         """
-        payload = {
+        payload: Dict[str, Any] = {
             "workflow_name": name,
             "metadata": metadata or {},
         }
+        if deduplication_id:
+            payload["deduplication_id"] = deduplication_id
+        if parent_workflow_id:
+            payload["parent_workflow_id"] = str(parent_workflow_id)
+
         res = await self.http_client.post(f"{self.base_url}/api/v1/workflows", json=payload)
         res.raise_for_status()
         workflow_data = res.json()

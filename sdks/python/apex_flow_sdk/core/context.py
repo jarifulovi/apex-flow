@@ -20,6 +20,7 @@ class WorkflowContext:
         self.completed_checkpoints: Dict[str, Dict[str, Any]] = {}
         self.active_step_ids: Dict[str, str] = {}
         self._checkpoints_loaded = False
+        self._step_counter = 0
 
     async def _fetch_checkpoints(self):
         """Fetch existing step execution checkpoints and active step IDs from the control plane."""
@@ -58,6 +59,8 @@ class WorkflowContext:
         """
         Execute a modular workflow step with durable checkpointing, retries, and control plane status tracking.
         """
+        self._step_counter += 1
+
         # 1. Check local in-memory cache first
         if name in self.step_cache:
             return self.step_cache[name]
@@ -76,6 +79,7 @@ class WorkflowContext:
             step_payload = {
                 "workflow_id": str(self.workflow_run_id),
                 "step_name": name,
+                "step_order": self._step_counter,
                 "input_payload": {},
                 "max_attempts": retries,
             }
