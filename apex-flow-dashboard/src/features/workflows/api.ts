@@ -70,7 +70,10 @@ export async function getWorkflows(
   return fetchWithAuth<Workflow[]>(`/api/v1/workflows?${query.toString()}`, token);
 }
 
+import { MOCK_WORKFLOW_DETAIL } from "./data";
+
 export async function getWorkflowDetail(token: string, workflowId: string): Promise<WorkflowDetail> {
+  // return MOCK_WORKFLOW_DETAIL;
   return fetchWithAuth<WorkflowDetail>(`/api/v1/workflows/${workflowId}`, token);
 }
 
