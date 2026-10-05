@@ -22,11 +22,14 @@ print_usage() {
     echo "Usage: ./run.sh <option>"
     echo ""
     echo "Available options:"
-    echo "  ecom  | order  : E-Commerce Order Processing Pipeline (ecommerce_order_processing.py)"
-    echo "  lead  | worker : AI Lead Ingestion & Worker Example (worker_example.py)"
+    echo "  ecom        | order       : E-Commerce Order Processing Pipeline (ecommerce_order_processing.py)"
+    echo "  subworkflow | sub         : Parent & Child Sub-Workflow Lineage Demo (--subworkflow)"
+    echo "  lead        | worker      : AI Lead Ingestion & Worker Example (worker_example.py)"
     echo ""
-    echo "Example:"
+    echo "Examples:"
     echo "  ./run.sh ecom"
+    echo "  ./run.sh ecom --fail"
+    echo "  ./run.sh subworkflow"
     echo "================================================="
 }
 
@@ -37,6 +40,10 @@ case "$OPTION" in
     ecom|order)
         echo "Running E-Commerce Order Processing Example..."
         "$PYTHON_BIN" "$SCRIPT_DIR/ecommerce_order_processing.py" "$@"
+        ;;
+    subworkflow|sub-workflow|sub)
+        echo "Running Parent & Child Sub-Workflow Lineage Example..."
+        "$PYTHON_BIN" "$SCRIPT_DIR/ecommerce_order_processing.py" --subworkflow "$@"
         ;;
     lead|worker)
         echo "Running AI Lead Processing Example..."

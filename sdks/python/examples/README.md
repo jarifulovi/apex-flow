@@ -24,15 +24,31 @@ File: [`ecommerce_order_processing.py`](file:///home/ovi/Desktop/Project/Web/ape
 
 Demonstrates a multi-step order fulfillment pipeline (`validate-payment` ➔ `reserve-inventory` ➔ `generate-shipping-label` ➔ `send-dispatch-email`).
 
-### Run:
+### Run Options:
 ```bash
-python sdks/python/examples/ecommerce_order_processing.py
+./run.sh ecom               # Standard execution
+./run.sh ecom --fail        # Simulated step failure & retries
+./run.sh subworkflow        # Parent & Child Sub-Workflow Lineage Demo
 ```
 
 ### What happens:
 1. Registers a new workflow run execution on ApexFlow backend.
 2. Executes each step with zero-knowledge durable checkpointing.
-3. Live telemetry updates automatically in your Dashboard under **Workflows** (`/dashboard/workflows`) and **Steps** (`/dashboard/steps`).
+3. Spawns child sub-workflows linked by `parent_workflow_id` when running `--subworkflow`.
+4. Live telemetry updates automatically in your Dashboard under **Workflows** (`/dashboard/workflows`) and **Steps** (`/dashboard/steps`).
+
+---
+
+## 🌿 Parent-Child Sub-Workflow State Behavior Matrix
+
+| Scenario | Fire-and-Forget Mode (Async) | Awaited Sub-Workflow Mode (Sync) |
+| :--- | :--- | :--- |
+| **Child Fails** | Child $\rightarrow$ `FAILED`. Parent stays `COMPLETED`. | Child $\rightarrow$ `FAILED`. Parent step catches error $\rightarrow$ Parent `FAILED`. |
+| **Child Cancelled** | Child $\rightarrow$ `CANCELLED`. Parent unaffected. | Child $\rightarrow$ `CANCELLED`. Parent step fails $\rightarrow$ Parent `FAILED`. |
+| **Child Restarted** | Child reset to `PENDING`. Parent unaffected. | Child reset to `PENDING`. Parent re-awaits child result. |
+| **Parent Fails** | Parent $\rightarrow$ `FAILED`. Active child workflows continue running. | Parent $\rightarrow$ `FAILED`. Active child workflows continue running. |
+| **Parent Cancelled** | Parent $\rightarrow$ `CANCELLED`. Cascades `CANCELLED` to active child workflows. | Parent $\rightarrow$ `CANCELLED`. Cascades `CANCELLED` to active child workflows. |
+| **Parent Restarted** | Parent reset to `RUNNING`. Cascades `PENDING` reset to failed/cancelled child workflows. | Parent reset to `RUNNING`. Cascades `PENDING` reset to failed/cancelled child workflows. |
 
 ---
 

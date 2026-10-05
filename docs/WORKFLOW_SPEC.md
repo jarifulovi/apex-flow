@@ -108,6 +108,17 @@ ApexFlow supports launching **sub-workflows** from within parent workflow steps:
 - **Dashboard Tree Telemetry**: Allows visual dashboard inspectors to render nested execution trees and trace parent-child status propagation.
 - **Modular Isolation**: Sub-workflows maintain independent retry budgets, step order sequences, and status lifecycles.
 
+### Parent-Child Sub-Workflow State Behavior Matrix:
+
+| Scenario | Fire-and-Forget Mode (Async) | Awaited Sub-Workflow Mode (Sync) |
+| :--- | :--- | :--- |
+| **Child Fails** | Child $\rightarrow$ `FAILED`. Parent remains `COMPLETED` (isolated). | Child $\rightarrow$ `FAILED`. Parent step catches error $\rightarrow$ Parent `FAILED`. |
+| **Child Cancelled** | Child $\rightarrow$ `CANCELLED`. Parent unaffected. | Child $\rightarrow$ `CANCELLED`. Parent step fails $\rightarrow$ Parent `FAILED`. |
+| **Child Restarted** | Child reset to `PENDING` & steps to `QUEUED`. Parent unaffected. | Child reset to `PENDING`. Parent re-awaits child result. |
+| **Parent Fails** | Parent $\rightarrow$ `FAILED`. Active child workflows continue running. | Parent $\rightarrow$ `FAILED`. Active child workflows continue running. |
+| **Parent Cancelled** | Parent $\rightarrow$ `CANCELLED`. Cascades `CANCELLED` to active child workflows. | Parent $\rightarrow$ `CANCELLED`. Cascades `CANCELLED` to active child workflows. |
+| **Parent Restarted** | Parent reset to `RUNNING`. Cascades `PENDING` reset to failed/cancelled child workflows. | Parent reset to `RUNNING`. Cascades `PENDING` reset to failed/cancelled child workflows. |
+
 ---
 
 ## 🌐 Control Plane Protocol Map

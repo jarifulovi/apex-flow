@@ -179,7 +179,7 @@ class WorkflowService:
         owner_id: Optional[uuid.UUID] = None,
         project_id: Optional[uuid.UUID] = None,
     ) -> WorkflowRun:
-        """Cancel an active workflow run and mark pending steps as cancelled."""
+        """Cancel an active workflow run, its pending steps, and cascade cancel to child sub-workflows."""
         workflow_run = await WorkflowService.get_workflow_run_by_id(
             db=db, workflow_run_id=workflow_run_id, owner_id=owner_id, project_id=project_id
         )
@@ -202,6 +202,16 @@ class WorkflowService:
             )
         )
 
+        # Cascade cancel to child sub-workflows
+        await db.execute(
+            update(WorkflowRun)
+            .where(
+                WorkflowRun.parent_workflow_id == workflow_run_id,
+                WorkflowRun.status.in_(["pending", "running"]),
+            )
+            .values(status="cancelled", completed_at=now)
+        )
+
         await db.commit()
         await db.refresh(workflow_run)
         return workflow_run
@@ -213,7 +223,7 @@ class WorkflowService:
         owner_id: Optional[uuid.UUID] = None,
         project_id: Optional[uuid.UUID] = None,
     ) -> WorkflowRun:
-        """Reset failed or cancelled steps to queued and restart workflow run."""
+        """Reset failed or cancelled steps to queued, restart workflow run, and reset child sub-workflows."""
         workflow_run = await WorkflowService.get_workflow_run_by_id(
             db=db, workflow_run_id=workflow_run_id, owner_id=owner_id, project_id=project_id
         )
@@ -237,6 +247,16 @@ class WorkflowService:
                 locked_until=None,
                 completed_at=None,
             )
+        )
+
+        # Cascade reset to child sub-workflows if failed or cancelled
+        await db.execute(
+            update(WorkflowRun)
+            .where(
+                WorkflowRun.parent_workflow_id == workflow_run_id,
+                WorkflowRun.status.in_(["failed", "cancelled"]),
+            )
+            .values(status="pending", completed_at=None)
         )
 
         await db.commit()

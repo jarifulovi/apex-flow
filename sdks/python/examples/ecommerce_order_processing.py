@@ -28,8 +28,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from apex_flow_sdk import ApexFlowClient, WorkflowContext, validate_response, NonRetryableError
 
-# Check for failure simulation flag
+# Check for flags
 SIMULATE_FAILURE = "--fail" in sys.argv or "--simulate-failure" in sys.argv
+ENABLE_SUBWORKFLOW = "--subworkflow" in sys.argv or "--child-workflow" in sys.argv
 
 # Initialize SDK Client
 BASE_URL = os.getenv("APEXFLOW_BASE_URL", "http://127.0.0.1:8000")
@@ -81,6 +82,21 @@ async def process_order_workflow(ctx: WorkflowContext, order_details: dict):
         print(f"  🏭 [Step 2] Locking warehouse inventory for {len(order_details.get('items', []))} items...")
         await asyncio.sleep(0.4)
 
+        child_ids = []
+        if ENABLE_SUBWORKFLOW:
+            print("  🌿 [Sub-Workflow Demo] Triggering child sub-workflows from parent run...")
+            child1_id = await ctx.child_workflow(
+                name="warehouse-picking-subworkflow",
+                metadata={"parent_order": order_id, "sub_task": "item-picking-zone-A"},
+            )
+            child2_id = await ctx.child_workflow(
+                name="customs-clearance-subworkflow",
+                metadata={"parent_order": order_id, "sub_task": "international-declaration"},
+            )
+            child_ids = [str(child1_id), str(child2_id)]
+            print(f"     ✅ Child Sub-Workflow #1 Registered: {child1_id}")
+            print(f"     ✅ Child Sub-Workflow #2 Registered: {child2_id}")
+
         if SIMULATE_FAILURE and order_details.get("force_item_out_of_stock"):
             print("  ❌ [Step 2 Simulated Fatal Error] SKU OUT_OF_STOCK! Raising NonRetryableError...")
             raise NonRetryableError("SKU #KB-809 OUT_OF_STOCK: Insufficient units at WH-EAST-04")
@@ -89,6 +105,7 @@ async def process_order_workflow(ctx: WorkflowContext, order_details: dict):
             "warehouse_id": "WH-EAST-04",
             "items_allocated": order_details.get("items", ["Mechanical Keyboard", "Monitor Arm"]),
             "status": "RESERVED",
+            "child_subworkflow_ids": child_ids,
         }
 
     inventory_res = await ctx.step("reserve-inventory", reserve_inventory_func, retries=3)

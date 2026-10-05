@@ -20,9 +20,11 @@ import {
 import { useAuth } from "@/features/auth/hooks";
 import {
   getWorkflowDetail,
+  getWorkflows,
   cancelWorkflowRun,
   restartWorkflowRun,
   formatDurationMs,
+  type Workflow,
   type WorkflowDetail,
   type WorkflowStepSummary,
 } from "@/features/workflows/api";
@@ -77,6 +79,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
   const workflowId = resolvedParams.id;
   const { accessToken } = useAuth();
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
+  const [childWorkflows, setChildWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +94,10 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
       setError(null);
       const data = await getWorkflowDetail(accessToken, workflowId);
       setDetail(data);
+
+      // Fetch child sub-workflows if any exist
+      const childrenRes = await getWorkflows(accessToken, undefined, "all", 20, 0, undefined, workflowId).catch(() => ({ data: [] }));
+      setChildWorkflows(childrenRes.data || []);
     } catch (err: any) {
       console.error("Failed to load workflow detail:", err);
       setError(err?.message || "Failed to load workflow details");
@@ -265,6 +272,57 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
             </span>
           </div>
         </div>
+
+        {/* Sub-Workflow Parent Lineage */}
+        {detail.parent_workflow_id && (
+          <div className="bg-cyan-950/20 border border-cyan-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 text-cyan-300">
+              <GitBranch size={16} className="text-cyan-400 shrink-0" />
+              <span>
+                Child Sub-Workflow spawned from Parent Run:{" "}
+                <code className="font-mono text-cyan-200 font-semibold">{detail.parent_workflow_id}</code>
+              </span>
+            </div>
+            <Link href={`/dashboard/workflows/${detail.parent_workflow_id}`}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-cyan-500/40 text-cyan-300 hover:text-white bg-cyan-950/60 hover:bg-cyan-900/60 text-xs h-7 px-3 gap-1 shrink-0"
+              >
+                <span>View Parent Run →</span>
+              </Button>
+            </Link>
+          </div>
+        )}
+
+        {/* Spawned Child Sub-Workflows */}
+        {childWorkflows.length > 0 && (
+          <div className="bg-violet-950/20 border border-violet-500/30 rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-violet-300">
+              <GitBranch size={15} className="text-violet-400" />
+              <span>Spawned Child Sub-Workflows ({childWorkflows.length})</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {childWorkflows.map((child) => (
+                <Link
+                  key={child.id}
+                  href={`/dashboard/workflows/${child.id}`}
+                  className="p-3 rounded-lg bg-[#161620] border border-white/10 hover:border-violet-500/40 flex items-center justify-between text-xs transition-colors group"
+                >
+                  <div className="truncate pr-2">
+                    <div className="font-medium text-zinc-200 group-hover:text-violet-300 truncate">
+                      {child.workflow_name}
+                    </div>
+                    <div className="text-[10px] font-mono text-zinc-400 truncate">{child.id}</div>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 capitalize font-mono shrink-0">
+                    {child.status}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Step Execution Timeline */}
         <section className="dashboard-section" aria-labelledby="steps-timeline-heading">
