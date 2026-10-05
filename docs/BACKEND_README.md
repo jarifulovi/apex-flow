@@ -1,12 +1,14 @@
 # ApexFlow Backend Control Plane (`apex-flow-backend`)
 
-> **Asynchronous REST API State Coordinator, Database Queue Engine, and Execution Telemetry Provider.**
+> **Asynchronous REST API State Coordinator, High-Throughput Queue Engine, and Execution Telemetry Provider.**
 
 ---
 
-## 📌 Description
+## 📌 Context & Overview
 
-The **ApexFlow Backend Control Plane** manages workflow execution states, coordinates step-level queue sequencing via PostgreSQL, and processes worker status handshakes without executing user business logic or storing sensitive API credentials.
+The **ApexFlow Backend Control Plane** is a lightweight, zero-knowledge state coordinator built with FastAPI and PostgreSQL. It manages workflow execution state, coordinates step-level queue sequencing, tracks worker heartbeats, and serves execution telemetry to the dashboard. 
+
+The backend **never executes user business logic**, nor does it store sensitive API credentials or model keys. All workflow execution occurs locally on developer workers.
 
 ---
 
@@ -15,149 +17,100 @@ The **ApexFlow Backend Control Plane** manages workflow execution states, coordi
 | Component | Technology | Version Constraint | Purpose |
 | :--- | :--- | :--- | :--- |
 | **Runtime** | Python | `>= 3.12` | High-performance asynchronous runtime. |
-| **Framework** | FastAPI | `>= 0.136.0, < 0.142.0` | Asynchronous REST API & OpenAPI docs generator. |
-| **ORM** | SQLAlchemy (Async) | `>= 2.0.0` | Async database models & query builder (`sqlalchemy[asyncio]`). |
-| **Driver** | AsyncPG | `>= 0.30.0` | Non-blocking PostgreSQL database driver. |
-| **Concurrency** | Greenlet | `>= 3.0.0` | Required for SQLAlchemy async greenlet context switching. |
+| **Framework** | FastAPI | `>= 0.110.0` | Asynchronous REST API & OpenAPI schema generator. |
+| **ORM** | SQLAlchemy (Async) | `>= 2.0.0` | Non-blocking database models & query builder (`sqlalchemy[asyncio]`). |
+| **Driver** | AsyncPG | `>= 0.30.0` | High-throughput PostgreSQL database driver. |
 | **Config** | Pydantic Settings | `>= 2.0.0` | Type-safe environment configuration loader. |
-| **Validation** | Pydantic | `>= 2.7.0` | Data serialization & request schema validation. |
-| **Security** | PyJWT | `>= 2.8.0` | JWT token decoding & validation (`pyjwt[crypto]`). |
-| **Migrations** | Alembic | `>= 1.13.0` | Database schema migration engine. |
-| **Testing** | Pytest & Pytest-Asyncio | `>= 8.0.0` | Async automated integration & unit test suite. |
+| **Validation** | Pydantic | `>= 2.7.0` | Request serialization & payload schema validation. |
+| **Security** | PyJWT | `>= 2.8.0` | Dashboard Supabase Bearer JWT decoding & validation. |
+| **Testing** | Pytest & Pytest-Asyncio | `>= 8.0.0` | Automated integration and E2E test suite. |
 
 ---
 
 ## 🏗️ Architecture & Component Layers
 
 ```text
-[ HTTP Client / Worker / Dashboard ]
-                 │
-                 ▼
-     ┌──────────────────────┐
-     │   app/api/v1/        │  <-- Thin HTTP Routers (workflows.py, steps.py, health.py)
-     └───────────┬──────────┘
-                 │
-                 ▼
-     ┌──────────────────────┐
-     │   app/services/      │  <-- Business Logic & Queue Engine (StepService, WorkflowService)
-     └───────────┬──────────┘
-                 │
-        ┌────────┴────────┐
-        ▼                 ▼
- ┌──────────────┐  ┌──────────────┐
- │ app/models/  │  │ app/schemas/ │  <-- SQLAlchemy ORM Models & Pydantic Schemas
- └──────┬───────┘  └──────────────┘
-        │
-        ▼
- ┌──────────────┐
- │  app/core/   │  <-- Infrastructure (config.py, database.py, exceptions.py)
- └──────┬───────┘
-        │
-        ▼
- ┌──────────────────────────┐
- │ PostgreSQL / Supabase DB │  <-- Relational Persistence & Row-Locking Queue
- └──────────────────────────┘
+  [ Dashboard UI (Next.js) ]          [ SDK Worker Instances ]
+             │                                   │
+             ▼ (Bearer JWT)                      ▼ (X-ApexFlow-Project-Key)
+    ┌──────────────────────────────────────────────────┐
+    │           FastAPI API Router Layer               │
+    │     (workflows.py, steps.py, keys.py, health.py)  │
+    └────────────────────────┬─────────────────────────┘
+                             │
+                             ▼
+    ┌──────────────────────────────────────────────────┐
+    │               Service Engine Layer               │
+    │ (WorkflowService, StepService, QueueService, etc)│
+    └────────────────────────┬─────────────────────────┘
+                             │
+                             ▼
+    ┌──────────────────────────────────────────────────┐
+    │       Async SQLAlchemy ORM & Postgres DB         │
+    │    (Projects, Workers, WorkflowRuns, Steps)      │
+    └──────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🔄 Short Data Flow
+## ⚡ Key Backend Systems & Architecture Features
 
-1. **Initiate**: `POST /api/v1/workflows` creates a `workflows` record with `status = 'pending'`.
-2. **Queue**: `POST /api/v1/steps` creates `workflow_steps` records with `status = 'queued'`.
-3. **Dispatch**: `POST /api/v1/steps/poll` uses **PostgreSQL `FOR UPDATE SKIP LOCKED`** to acquire the next queued step, setting `status = 'running'` and `attempt_count += 1`.
-4. **Report**: Worker executes locally and posts `POST /api/v1/steps/report` with `status = 'success'` or `'failed'`.
-5. **Evaluate**: Backend updates step status, checks remaining active steps, and auto-completes parent workflow (`status = 'completed'`).
+### 1. High-Throughput Scoped Queue Polling
+- Uses PostgreSQL `SELECT FOR UPDATE OF WorkflowStep SKIP LOCKED`.
+- Scoping row locks strictly to `workflow_steps` prevents table-level lock contention, allowing multiple workers to poll and execute steps for the same workflow run in parallel.
+- Automatically recovers stale step leases (`recover_stale_locks`) if a worker process crashes or loses network connectivity mid-execution.
 
----
+### 2. Fast $O(1)$ Step Status Reporting & Explicit SDK Completion
+- Step execution reporting (`POST /api/v1/steps/report`) performs fast $O(1)$ status writes without expensive database subqueries or status guessing.
+- Workflow run completion is triggered explicitly by the SDK (`POST /api/v1/workflows/{id}/complete`) when top-level workflow code finishes, avoiding premature status flips.
 
-## 🗄️ Database Schemas
+### 3. Idempotency & Deduplication Engine
+- Supports optional `deduplication_id` on workflow creation (`POST /api/v1/workflows`).
+- Enforces database-level idempotency via a filtered unique index (`idx_workflow_runs_dedup`), returning active workflow runs immediately if a duplicate trigger request is received.
 
-### 1. `project_keys` Table
-Stores hashed API project keys for SDK/Worker authentication.
+### 4. Interactive Workflow Control Actions
+- **Cancel Workflow** (`POST /api/v1/workflows/{id}/cancel`): Immediately cancels an active workflow run and marks all pending/queued steps as `cancelled`.
+- **Restart Workflow** (`POST /api/v1/workflows/{id}/restart`): Resets failed or cancelled steps back to `queued` for worker pickup and re-activates the workflow run.
 
-```sql
-CREATE TABLE project_keys (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    key_prefix TEXT NOT NULL,
-    key_hash TEXT NOT NULL UNIQUE,
-    status TEXT NOT NULL DEFAULT 'active',
-    last_used_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+### 5. Worker Registry & Heartbeat Tracking
+- Automatically registers workers and tracks active heartbeats (`name`, `worker_id`, `status`, `last_seen_at`) on every queue poll or step status report.
 
--- Performance index for SHA-256 API key authentication lookup
-CREATE INDEX idx_project_keys_hash ON project_keys (key_hash) WHERE status = 'active';
-```
-
-### 2. `workflows` Table
-Tracks master execution states per tenant/user.
-
-```sql
-CREATE TABLE workflows (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    status TEXT NOT NULL DEFAULT 'pending',
-    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-### 3. `workflow_steps` Table
-Acts as step execution log and concurrency-safe distributed queue.
-
-```sql
-CREATE TABLE workflow_steps (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
-    step_name TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'queued',
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    input_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-    output_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-    error_message TEXT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Performance Index for SKIP LOCKED queue polling queries
-CREATE INDEX idx_workflow_steps_queue ON workflow_steps (status, created_at);
-```
+### 6. Dual Storage Retention & Pruning Strategy (`pg-cron`)
+To prevent database storage bloating on Supabase free-tier PostgreSQL databases:
+- **Soft Payload Pruning** (`prune_old_payloads`): Daily at 02:00 AM UTC, clears JSON payloads (`{}`) for completed runs older than 7 days, reducing disk usage by 90%+ while preserving run telemetry metrics for 30 days.
+- **Hard Batched Delete** (`prune_old_workflow_runs_batched`): Daily at 03:00 AM UTC, deletes terminal runs older than 30 days in non-blocking batches of 2,000 rows.
 
 ---
 
-## 🔒 Authentication & Security Layer
+## 🔒 Authentication & Multi-Tenant Security Model
 
-The backend control plane enforces a **Two-Dependency Authentication Model** (`app/api/deps.py`):
+The backend control plane enforces a **Two-Layer Authentication Model** (`app/api/deps.py`):
 
-1. **`get_current_user_from_api_key`**: 
-   - Used by SDK/Worker routes (`/api/v1/workflows`, `/api/v1/steps`).
-   - Validates the `X-ApexFlow-Project-Key` header against stored SHA-256 hashes in `project_keys`.
-   - Automatically scopes workflow queueing, step polling, and status reporting to the key's owner (`user_id`).
+1. **SDK / Worker Authentication** (`X-ApexFlow-Project-Key`):
+   - Authenticates worker requests via SHA-256 hashed Project API keys (`af_live_...`).
+   - Automatically scopes queue polling, step creation, and workflow triggering to the key's project tenant.
 
-2. **`get_current_user_from_jwt`**:
-   - Used by Dashboard UI routes (`/api/v1/keys`).
-   - Decodes Supabase Bearer JWT tokens in the `Authorization` header (`sub` claim).
+2. **Dashboard UI Authentication** (`Bearer JWT`):
+   - Authenticates dashboard requests via Supabase JWT Bearer tokens (`sub` claim).
+   - Scopes project key management, tenant workflow telemetry, and manual control actions to the authenticated user.
 
 ---
 
-## 🔌 API Endpoints Summary
+## 🌐 Control Plane REST API Endpoint Summary
 
 | Endpoint | Method | Auth Dependency | Description |
 | :--- | :--- | :--- | :--- |
-| `/api/v1/health` | `GET` | None | Zero-DB liveness probe for cloud health checks. |
-| `/api/v1/health/db` | `GET` | None | Readiness probe checking live PostgreSQL ping. |
-| `/api/v1/keys` | `POST` | Supabase JWT | Create a new project API key (`raw_key` shown once). |
+| `/api/v1/health` | `GET` | None | Liveness probe for cloud health checks (0 DB queries). |
+| `/api/v1/health/db` | `GET` | None | Readiness probe checking live PostgreSQL database ping. |
+| `/api/v1/keys` | `POST` | Supabase JWT | Create a new project API key (`raw_key` returned once). |
 | `/api/v1/keys` | `GET` | Supabase JWT | List user's active & revoked project API keys. |
 | `/api/v1/keys/{key_id}` | `DELETE` | Supabase JWT | Revoke a project API key by ID. |
-| `/api/v1/workflows` | `POST` | API Key | Create a new workflow run execution state. |
-| `/api/v1/workflows` | `GET` | API Key | List tenant workflows (paginated, user scoped). |
-| `/api/v1/workflows/{id}` | `GET` | API Key | Fetch workflow run details & step timeline history. |
-| `/api/v1/steps` | `POST` | API Key | Queue a new execution step under a workflow. |
-| `/api/v1/steps/poll` | `POST` | API Key | Poll tenant's next queued step via `FOR UPDATE SKIP LOCKED`. |
-| `/api/v1/steps/report` | `POST` | API Key | Report worker step status (`success`/`failed`). |
-
+| `/api/v1/workflows` | `POST` | Project API Key | Create or deduplicate a workflow run execution state. |
+| `/api/v1/workflows` | `GET` | Bearer / Key | List workflow runs (paginated & filtered). |
+| `/api/v1/workflows/{id}` | `GET` | Bearer / Key | Fetch workflow run detail and ordered step execution timeline. |
+| `/api/v1/workflows/{id}/complete` | `POST` | Project API Key | Mark workflow run completed upon SDK function completion. |
+| `/api/v1/workflows/{id}/cancel` | `POST` | Bearer / Key | Cancel active workflow run and mark queued steps cancelled. |
+| `/api/v1/workflows/{id}/restart` | `POST` | Bearer / Key | Reset failed/cancelled steps to queued and restart run. |
+| `/api/v1/steps` | `POST` | Project API Key | Queue a new step under a workflow run. |
+| `/api/v1/steps/poll` | `POST` | Project API Key | Poll next queued step using `FOR UPDATE SKIP LOCKED`. |
+| `/api/v1/steps/report` | `POST` | Project API Key | Report worker step execution result (`success` / `failed`). |

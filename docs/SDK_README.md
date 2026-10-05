@@ -1,100 +1,105 @@
 # ApexFlow Multi-Language SDK Specification (`docs/SDK_README.md`)
 
-> **Language-Agnostic Client Library Specification, Control Plane Protocol, and Required SDK Capabilities.**
+> **Language-Agnostic SDK Architecture, Execution Mechanics, Client Responsibilities, and Protocol Specifications.**
 
 ---
 
-## 📌 Overview
+## 📌 Overview & Core Concerns
 
-An **ApexFlow SDK** is a client library running on the developer's local or hosted worker infrastructure. It enables developers to write stateful, multi-step workflows using native programming language constructs (`decorators`, `async/await`, `lambdas`, `goroutines`).
+An **ApexFlow SDK** is a client library operating on developer worker infrastructure. It allows developers to write stateful, multi-step workflow pipelines using native language primitives (`async/await`, functions, classes, decorators, goroutines).
 
-SDKs do not execute heavy logic on the ApexFlow Control Plane. Instead, they handle local step execution, exponential backoff retries, state memoization, and REST status reporting to the backend.
+The SDK is **not merely a thin HTTP wrapper** for the control plane. It encapsulates vital execution concerns including local state memoization, durable crash recovery, exponential backoff retries, signal handling, and status reporting.
 
 ---
 
-## 🌐 Control Plane Connection Protocol
+## ⚙️ Key SDK Concerns & Responsibilities
 
-All language SDKs communicate with the backend control plane via standard HTTP/1.1 or HTTP/2 JSON REST endpoints. 
-
-**Authentication**: Every SDK request must include the project API key in the HTTP request headers:
-```http
-X-ApexFlow-Project-Key: af_live_...
+```text
+       ┌─────────────────────────────────────────────────────────────┐
+       │                    SDK Worker Runtime                       │
+       │                                                             │
+       │  ┌───────────────────┐             ┌─────────────────────┐  │
+       │  │ Durable           │             │ Resilient Retry &   │  │
+       │  │ Checkpointing     │             │ Error Classification│  │
+       │  └─────────┬─────────┘             └──────────┬──────────┘  │
+       │            │                                  │             │
+       │            ▼                                  ▼             │
+       │  ┌───────────────────┐             ┌─────────────────────┐  │
+       │  │ Step Order        │             │ Signal Handling &   │  │
+       │  │ Sequencing        │             │ Graceful Shutdown   │  │
+       │  └─────────┬─────────┘             └──────────┬──────────┘  │
+       └────────────┼──────────────────────────────────┼─────────────┘
+                    │                                  │
+                    ▼                                  ▼
+       ┌─────────────────────────────────────────────────────────────┐
+       │             ApexFlow Control Plane REST API                 │
+       └─────────────────────────────────────────────────────────────┘
 ```
+
+### 1. Durable Checkpointing & Execution Resumption
+- Before executing a step, the SDK queries the control plane or local memory for existing execution checkpoints.
+- If a step was successfully executed during a prior attempt, the SDK **skips re-executing the step function** and immediately returns the memoized result.
+- If a worker crashes on Step 3 of a 5-step pipeline, a new worker instance resuming the workflow skips Steps 1 and 2 automatically, resuming execution directly at Step 3.
+
+### 2. Resilient Local Retries & Error Classification
+- Executes step functions with configurable retry limits and exponential backoff.
+- **Silent API Error Detection**: Inspects raw third-party HTTP/JSON API responses (`{"success": false}`) and converts silent failures into retryable exceptions.
+- **Immediate Abort on Non-Retryable Errors**: Immediately aborts remaining retry attempts when encountering non-transient failures (such as `401 Unauthorized`, `400 Bad Request`, or `OUT_OF_STOCK`), marking the step failed without wasting retry budgets.
+
+### 3. Explicit Top-Level Workflow Completion
+- Rather than forcing the control plane to guess when dynamic workflows finish, the SDK sends an explicit completion signal (`POST /api/v1/workflows/{id}/complete`) when the top-level workflow function finishes execution.
+
+### 4. Idempotency & Sub-Workflow Propagation
+- **Deduplication Transmission**: Accepts `deduplication_id` on workflow triggers to guarantee single-execution idempotency at the database level.
+- **Parent-Child Lineage**: Propagates `parent_workflow_id` when launching child workflows to preserve execution tree lineage in monitoring dashboards.
+
+### 5. Deterministic Step Sequence Tracking
+- Automatically assigns an incrementing sequence integer (`step_order = 1, 2, 3...`) when queueing steps under a workflow run, ensuring deterministic step ordering in timelines regardless of microsecond database timestamp precision.
+
+### 6. Signal Handling & Graceful Shutdown
+- Catches system termination signals (`SIGINT`, `SIGTERM`).
+- Completes currently executing in-flight step functions, notifies the control plane, and deregisters worker heartbeats before terminating process execution cleanly.
+
+### 7. Large Payload Offloading (The Pointer Pattern)
+- Direct HTTP request bodies carry small JSON payloads (< 64KB).
+- Large binary files or high-volume datasets are uploaded directly to Object Storage (S3 / Supabase Storage), transmitting only secure URL pointers (`{"$pointer": "..."}`) to the control plane.
+
+---
+
+## 🌐 Control Plane REST Protocol
+
+All language SDKs communicate with the backend control plane via HTTP REST endpoints authenticated via `X-ApexFlow-Project-Key: af_live_...`:
 
 ```text
 [ Developer Worker SDK ] ──(HTTP REST with X-ApexFlow-Project-Key)──> [ ApexFlow Control Plane ]
 ```
 
-### Protocol Interaction Flow:
+### Protocol Interaction Map:
 
-1. **Triggering a Workflow**:
-   - **Endpoint**: `POST /api/v1/workflows`
-   - **Header**: `X-ApexFlow-Project-Key: <key>`
-   - **Payload**: `{"user_id": "<uuid>", "metadata": {...}}`
-   - **Purpose**: Initializes a master workflow execution run (`status = 'pending'`).
+1. **Trigger Workflow**: `POST /api/v1/workflows`
+   - *Payload*: `{"workflow_name": "<name>", "metadata": {...}, "deduplication_id": "...", "parent_workflow_id": "..."}`
+   - *Returns*: Workflow run metadata (`id`, `status`).
 
-2. **Step Queue Registration**:
-   - **Endpoint**: `POST /api/v1/steps`
-   - **Header**: `X-ApexFlow-Project-Key: <key>`
-   - **Payload**: `{"workflow_id": "<uuid>", "step_name": "<name>", "input_payload": {...}}`
-   - **Purpose**: Registers a step in the control plane queue (`status = 'queued'`).
+2. **Queue Step**: `POST /api/v1/steps`
+   - *Payload*: `{"workflow_id": "<uuid>", "step_name": "<name>", "step_order": 1, "input_payload": {...}}`
+   - *Returns*: Queued step metadata (`id`, `status`).
 
-3. **Worker Queue Polling**:
-   - **Endpoint**: `POST /api/v1/steps/poll`
-   - **Header**: `X-ApexFlow-Project-Key: <key>`
-   - **Purpose**: Worker polls for the next available queued step belonging to the authenticated tenant (dispatched via `FOR UPDATE SKIP LOCKED`).
+3. **Poll Step**: `POST /api/v1/steps/poll`
+   - *Payload*: `{"worker_name": "...", "worker_id": "...", "step_names": [...]}`
+   - *Returns*: Next available step payload or `204 No Content`.
 
-4. **Step Execution Status Reporting**:
-   - **Endpoint**: `POST /api/v1/steps/report`
-   - **Header**: `X-ApexFlow-Project-Key: <key>`
-   - **Payload**: `{"step_id": "<uuid>", "status": "success" | "failed", "output_payload": {...}, "error_message": "..."}`
-   - **Purpose**: Reports local step execution completion or failure.
+4. **Report Step Status**: `POST /api/v1/steps/report`
+   - *Payload*: `{"step_id": "<uuid>", "status": "success" | "failed", "output_payload": {...}, "error_message": "..."}`
+   - *Returns*: Updated step status.
+
+5. **Complete Workflow**: `POST /api/v1/workflows/{id}/complete`
+   - *Returns*: Final workflow status (`completed`).
 
 ---
 
-## ⚙️ Environment Variable Resolution Standard
+## 📁 Multi-Language SDK Directory Layout
 
-All language SDKs must automatically attempt to resolve configuration from standard environment variables before falling back to local defaults:
-
-- `APEXFLOW_BASE_URL`: Base URL of the control plane backend (default: `http://127.0.0.1:8000`).
-- `APEXFLOW_PROJECT_KEY`: Secret Project API key (`af_live_...`).
-
-
----
-
-## 🧱 Required SDK Components & Architecture
-
-Every ApexFlow language SDK (Python, TypeScript, Go, Java) must implement the following 5 core capabilities:
-
-### 1. Client & Workflow Registry (`ApexFlowClient`)
-- **Workflow Registration**: A mechanism (`@decorator`, method, or struct wrapper) to register named workflow functions.
-- **Workflow Trigger**: Methods to launch workflow runs on the control plane.
-- **Worker Polling Loop**: An asynchronous background loop that polls `POST /api/v1/steps/poll` and dispatches acquired steps to local execution handlers.
-
-### 2. Execution Context (`WorkflowContext`)
-Passed as the first argument into workflow functions to provide step execution primitives:
-- `step(name, function, options)`: Wraps a single function call with durability.
-- `parallel(step_list)`: Executes multiple independent steps concurrently.
-
-### 3. Local State Memoization (Checkpointing)
-- Before executing a step, the SDK checks its local execution cache (`step_cache`).
-- If a step was already completed in a prior run attempt, the SDK skips re-execution and immediately returns the cached result.
-
-### 4. Local Retry Engine & Backoff
-- When a local step function throws an exception, the SDK catches the error and executes retries locally based on configured rules:
-  - **Max Retries**: Default = 3.
-  - **Exponential Backoff**: `sleep_time = backoff_factor ^ (attempt - 1)`.
-  - **Non-Retryable Errors**: Immediate failure without retrying for bug errors (e.g. 400 Bad Request, 401 Unauthorized).
-
-### 5. Secure Payload Offloading (The Pointer Pattern)
-- Small JSON payloads (< 64KB) are transmitted directly in HTTP request bodies.
-- Large binary or text outputs are uploaded by the SDK to Object Storage (S3 / Supabase Storage), sending only a secure URL pointer (`{"$pointer": "..."}`) to the control plane.
-
----
-
-## 📁 Multi-Language SDK Folder Standard
-
-All language SDKs reside under the `sdks/` directory in the monorepo:
+All language SDK implementations reside under `sdks/` in the monorepo:
 
 - **Python**: `sdks/python/` (`apex-flow-sdk`)
 - **TypeScript**: `sdks/typescript/` (`@apex-flow/sdk`)

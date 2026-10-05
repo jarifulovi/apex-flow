@@ -1,140 +1,123 @@
-# ApexFlow: Technical Workflow & Queue Specification
+# ApexFlow Workflow Specification (`docs/WORKFLOW_SPEC.md`)
 
-> **Backend Orchestration Mechanics, PostgreSQL Row-Locking Queue (`FOR UPDATE SKIP LOCKED`), and Worker Protocol.**
-
----
-
-## 🔄 Workflow Execution Lifecycle Sequence
-
-The diagram below illustrates the exact sequence of interactions between the **Trigger Application**, **ApexFlow Backend Control Plane**, **PostgreSQL Database**, and **SDK Worker Instances**:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant App as Application / Trigger
-    participant Backend as ApexFlow Backend (FastAPI)
-    participant DB as PostgreSQL / Supabase
-    participant Worker as SDK Worker Client
-
-    Note over App, Backend: 1. Workflow Initiation
-    App->>Backend: POST /api/v1/workflows (Header: X-ApexFlow-Project-Key)
-    Backend->>DB: Validate Key Hash & Extract user_id
-    Backend->>DB: INSERT INTO workflows (user_id, status='pending')
-    Backend-->>App: Returns Workflow Object (id)
-
-    Note over App, Backend: 2. Step Queueing
-    App->>Backend: POST /api/v1/steps (Header: X-ApexFlow-Project-Key, workflow_id, step_name, input)
-    Backend->>DB: Validate Key Hash & Verify Workflow ownership
-    Backend->>DB: INSERT INTO workflow_steps (status='queued', attempt_count=0)
-    Backend-->>App: Returns Step Object (id, status='queued')
-
-    Note over Worker, DB: 3. Worker Polling & Execution Loop
-    loop Continuous Worker Polling
-        Worker->>Backend: POST /api/v1/steps/poll (Header: X-ApexFlow-Project-Key)
-        Backend->>DB: SELECT FOR UPDATE SKIP LOCKED WHERE status='queued' AND user_id=tenant_id
-        alt Step Available
-            Backend->>DB: UPDATE step status='running', attempt_count += 1
-            Backend->>DB: UPDATE parent workflow status='running' (if pending)
-            Backend-->>Worker: Returns Step Payload (step_id, step_name, input_payload)
-            
-            Note over Worker: 4. Local Execution
-            Worker->>Worker: Executes step function locally with user env/API keys
-            
-            alt Step Succeeded
-                Worker->>Backend: POST /api/v1/steps/report (Header: X-ApexFlow-Project-Key, status='success', output)
-                Backend->>DB: UPDATE step status='success', output_payload=output
-                Backend->>DB: Check remaining steps (If 0 pending -> workflow status='completed')
-                Backend-->>Worker: Returns Updated Step
-            else Step Failed
-                Worker->>Backend: POST /api/v1/steps/report (Header: X-ApexFlow-Project-Key, status='failed', error)
-                Backend->>DB: UPDATE step status='failed', error_message=stacktrace
-                Backend->>DB: UPDATE parent workflow status='failed'
-                Backend-->>Worker: Returns Updated Step
-            end
-        else Queue Empty
-            Backend-->>Worker: HTTP 204 No Content (Worker sleeps briefly)
-        end
-    end
-```
+> **Workflow Lifecycles, Step Execution Mechanics, Sub-Workflow Lineage, and Queue Specifications.**
 
 ---
 
-## 📊 State Machine & Status Transitions
+## 📌 Overview
 
-### 1. Workflow Master State Machine
-- `pending`: Workflow run has been created; no steps have started executing.
-- `running`: At least one step has been picked up by a worker.
-- `completed`: All queued steps for the workflow run returned `success`.
-- `failed`: At least one step returned `failed` (or retry limits were exhausted).
+ApexFlow orchestrates multi-step business logic by decomposing applications into **discrete domain workflows** composed of individual, durable **steps**.
+
+Workflows operate on a code-first, event-driven execution model where control plane state transitions occur asynchronously while step functions execute on distributed worker processes.
+
+---
+
+## 🔄 Modular Domain Workflow Models
+
+Rather than running monolithic scripts, applications in ApexFlow are structured as modular domain workflows:
 
 ```text
-[ pending ] ──(worker polls first step)──> [ running ] ──┬──(all steps success)──> [ completed ]
-                                                         └──(step fails)─────────> [ failed ]
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Workflow 1: Lead Enrichment & Sales Pipeline                                │
+│ [ Extract Lead ] ──> [ Enrich CRM Data ] ──> [ Score ] ──> [ Trigger Email ] │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Workflow 2: E-Commerce Order Fulfillment & Logistics                         │
+│ [ Validate Payment ] ──> [ Lock Inventory ] ──> [ Label ] ──> [ Dispatch ]  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Workflow 3: Multi-Stage AI Data Ingestion                                   │
+│ [ Fetch Doc ] ──> [ Chunk & Embed Vectors ] ──> [ Summarize ] ──> [ Index ] │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2. Step Execution State Machine
-- `queued`: Step is registered and awaiting an available worker.
-- `running`: Step has been acquired by a worker via `FOR UPDATE SKIP LOCKED`.
-- `success`: Worker successfully executed local step function.
-- `failed`: Worker encountered an unhandled exception or non-retryable error.
+---
+
+## 📊 Master Workflow Run Lifecycle
+
+A **Workflow Run** represents a single execution instance of a named workflow.
 
 ```text
-[ queued ] ──(SELECT FOR UPDATE SKIP LOCKED)──> [ running ] ──┬──(report success)──> [ success ]
-                                                              └──(report failure)──> [ failed ]
+                      ┌──(all steps success + complete signal)──> [ COMPLETED ]
+                      │
+[ PENDING ] ──> [ RUNNING ] ───┬──(unhandled error or abort)────> [ FAILED ]
+                      │        │
+                      │        └──(manual cancel action)────────> [ CANCELLED ]
+                      │
+                      └──(manual restart action)────────────────> [ RUNNING ]
 ```
 
+### Lifecycle States:
+- **`PENDING`**: Workflow run has been registered on the control plane; execution has not yet commenced.
+- **`RUNNING`**: First step has been acquired by a worker or step execution is actively in progress.
+- **`COMPLETED`**: All steps finished with `success` and top-level workflow code sent an explicit completion signal.
+- **`FAILED`**: A step encountered a non-retryable error or exhausted retry limits.
+- **`CANCELLED`**: Execution was manually terminated via the control plane API or dashboard.
+
+### Key Operational Rules:
+1. **Idempotency & Deduplication**: If triggered with a `deduplication_id`, the control plane checks for an existing active run (`PENDING` or `RUNNING`) and returns the existing run ID, preventing duplicate workflow executions.
+2. **Interactive Restart**: Failed or cancelled runs can be restarted, resetting terminal step statuses back to `QUEUED` while preserving previously completed step checkpoints.
+
 ---
 
-## ⚡ Concurrency & Queueing Mechanics (`FOR UPDATE SKIP LOCKED`)
+## ⚙️ Individual Step Lifecycle Mechanics
 
-ApexFlow uses PostgreSQL's native row-level locking capabilities combined with multi-tenant scoping to deliver distributed message queuing without requiring external infrastructure (like Redis, RabbitMQ, or Celery).
+A **Workflow Step** represents an atomic unit of execution within a workflow run (e.g. an API call, database mutation, or model inference).
 
-### How it operates in `app/services/step_service.py`:
-
-```python
-stmt = (
-    select(WorkflowStep)
-    .join(Workflow, WorkflowStep.workflow_id == Workflow.id)
-    .where(WorkflowStep.status == "queued")
-)
-if user_id:
-    stmt = stmt.where(Workflow.user_id == user_id)
-
-stmt = (
-    stmt.order_by(WorkflowStep.created_at.asc())
-    .limit(1)
-    .with_for_update(skip_locked=True)
-)
+```text
+[ QUEUED ] ──(worker poll SKIP LOCKED)──> [ RUNNING ] ──┬──(report success)──> [ SUCCESS ]
+                                                        │
+                                                        └──(retries exhausted)─> [ FAILED ]
 ```
 
-1. **Multi-Tenant Isolation**: Filters queued steps by `user_id` so workers only pull steps belonging to their own tenant account.
-2. **Isolation**: When multiple SDK workers send concurrent `POST /api/v1/steps/poll` requests, `with_for_update(skip_locked=True)` ensures that each worker locks a unique queued step.
-3. **Non-Blocking**: Workers never wait for another worker's lock; if a row is currently locked by Worker A, Worker B automatically skips it and locks the next available row.
-4. **Atomicity**: The step status transition to `running` and `attempt_count` increment happen within the locked transaction before releasing.
+### Lifecycle States:
+- **`QUEUED`**: Registered in the control plane database queue awaiting worker pickup.
+- **`RUNNING`**: Acquired by a worker process via PostgreSQL row locking (`FOR UPDATE SKIP LOCKED`).
+- **`SUCCESS`**: Executed successfully on worker; output payload memoized.
+- **`FAILED`**: Encountered a non-retryable failure or exhausted max attempt limits.
+- **`CANCELLED`**: Marked cancelled due to parent workflow cancellation.
+
+### Step Execution Guarantees:
+- **Sequence Tracking (`step_order`)**: Each step is assigned a 1-based integer sequence (`step_order = 1, 2, 3...`), guaranteeing deterministic chronological ordering in database timeline queries.
+- **Concurrency & Non-Blocking Polling**: Workers poll queued steps using PostgreSQL `FOR UPDATE OF WorkflowStep SKIP LOCKED`. Workers lock only the specific step row, allowing multiple workers to poll steps for the same workflow in parallel without lock contention.
+- **Lease Locking & Stale Recovery**: Acquired steps receive a temporary lease lock (`locked_until`). If a worker crashes, the control plane automatically re-queues expired steps (`recover_stale_locks`).
 
 ---
 
-## 🌐 Control Plane REST API Contract Summary
+## 🌲 Parent-Child Sub-Workflow Lineage
 
-| Endpoint | Method | Header / Auth | Purpose | Response |
-| :--- | :--- | :--- | :--- | :--- |
-| `/api/v1/health` | `GET` | None | Lightweight liveness check (0 DB queries). | `{"status": "ok"}` |
-| `/api/v1/health/db` | `GET` | None | Readiness check verifying PostgreSQL ping. | `{"status": "online", "database": "healthy"}` |
-| `/api/v1/keys` | `POST` | Bearer JWT | Create a new project API key. | `ProjectKeyCreatedResponse` (`201`) |
-| `/api/v1/keys` | `GET` | Bearer JWT | List user's project API keys. | `List[ProjectKeyResponse]` |
-| `/api/v1/keys/{id}` | `DELETE` | Bearer JWT | Revoke a project API key by ID. | `ProjectKeyResponse` |
-| `/api/v1/workflows` | `POST` | Project API Key | Create a new master workflow run. | `WorkflowDetailResponse` (`201 Created`) |
-| `/api/v1/workflows` | `GET` | Project API Key | List workflow runs (user-scoped). | `List[WorkflowResponse]` |
-| `/api/v1/workflows/{id}` | `GET` | Project API Key | Fetch workflow run details & step history. | `WorkflowDetailResponse` |
-| `/api/v1/steps` | `POST` | Project API Key | Queue a new step under a workflow. | `WorkflowStepResponse` (`201 Created`) |
-| `/api/v1/steps/poll` | `POST` | Project API Key | Worker polls next tenant step via row-locking. | `WorkflowStepResponse` or `204` |
-| `/api/v1/steps/report` | `POST` | Project API Key | Worker reports step execution result. | `WorkflowStepResponse` |
+ApexFlow supports launching **sub-workflows** from within parent workflow steps:
 
+```text
+[ Master Order Workflow (Run #101) ]
+       │
+       ├── Step 1: Validate Payment
+       │
+       ├── Step 2: Launch Fulfillment Sub-Workflow (Run #102, parent_workflow_id=#101)
+       │       │
+       │       ├── Child Step 2a: Lock Warehouse Inventory
+       │       └── Child Step 2b: Print Shipping Label
+       │
+       └── Step 3: Send Confirmation Email
+```
+
+### Sub-Workflow Rules:
+- **Hierarchical Tracking**: Child workflows store `parent_workflow_id`, establishing strict parent-child lineage.
+- **Dashboard Tree Telemetry**: Allows visual dashboard inspectors to render nested execution trees and trace parent-child status propagation.
+- **Modular Isolation**: Sub-workflows maintain independent retry budgets, step order sequences, and status lifecycles.
 
 ---
 
-## 🚀 Adaptability & Future Expansion
+## 🌐 Control Plane Protocol Map
 
-- **Pointer Pattern**: For large inputs or outputs (>64KB or binary files), the worker/backend offloads raw data to S3 or Supabase Storage, passing only secure URL pointers in `input_payload` and `output_payload`.
-- **Dynamic DAG Graphing**: The backend step queue is built to support dependent step execution graphs (where Step C waits for both Step A and Step B to return `success`).
-- **Multi-Language SDKs**: The `/poll` and `/report` REST protocol expects only generic JSON primitives, enabling TypeScript, Go, or Java workers to participate in the exact same execution queue.
+| Action | Endpoint | Purpose |
+| :--- | :--- | :--- |
+| **Trigger Workflow** | `POST /api/v1/workflows` | Register or deduplicate a master workflow run. |
+| **Queue Step** | `POST /api/v1/steps` | Register an individual step in `QUEUED` state. |
+| **Poll Step** | `POST /api/v1/steps/poll` | Acquire next queued step via row-level locking. |
+| **Report Status** | `POST /api/v1/steps/report` | Update step status (`SUCCESS` / `FAILED`). |
+| **Complete Workflow** | `POST /api/v1/workflows/{id}/complete` | Transition run to `COMPLETED`. |
+| **Cancel Run** | `POST /api/v1/workflows/{id}/cancel` | Cancel active run and pending steps. |
+| **Restart Run** | `POST /api/v1/workflows/{id}/restart` | Reset failed steps to `QUEUED` and re-activate run. |
