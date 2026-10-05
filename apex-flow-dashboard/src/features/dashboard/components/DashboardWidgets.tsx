@@ -10,6 +10,8 @@ import {
   Activity,
   Loader2,
   Cpu,
+  TrendingUp,
+  Timer,
 } from "lucide-react";
 import Link from "next/link";
 import type { DashboardStats, ActivityItem } from "@/features/dashboard/api";
@@ -38,34 +40,34 @@ export function StatCards({ stats }: { stats: DashboardStats }) {
     {
       id: "stat-workflows",
       label: "Total Workflows",
-      value: stats.totalWorkflows,
+      value: stats.totalWorkflows.toLocaleString(),
       icon: GitBranch,
       color: "violet",
       hint: "Registered workflow runs",
     },
     {
+      id: "stat-success-rate",
+      label: "Success Rate",
+      value: `${(stats.successRatePercent ?? 100).toFixed(1)}%`,
+      icon: TrendingUp,
+      color: "emerald",
+      hint: "Terminal run completion rate",
+    },
+    {
       id: "stat-workers-active",
       label: "Active Workers",
-      value: stats.activeWorkersCount ?? 0,
+      value: (stats.activeWorkersCount ?? 0).toLocaleString(),
       icon: Cpu,
       color: "cyan",
       hint: "Live polling SDK workers",
     },
     {
-      id: "stat-steps-active",
-      label: "Active Steps",
-      value: stats.activeSteps,
-      icon: Clock,
+      id: "stat-avg-duration",
+      label: "Avg Duration",
+      value: (stats.avgDurationSeconds ?? 0) > 0 ? `${stats.avgDurationSeconds.toFixed(1)}s` : "—",
+      icon: Timer,
       color: "amber",
-      hint: "Queued or running steps",
-    },
-    {
-      id: "stat-steps-done",
-      label: "Completed Steps",
-      value: stats.completedSteps,
-      icon: CheckCircle2,
-      color: "emerald",
-      hint: "Successfully processed",
+      hint: "Completed execution avg time",
     },
   ];
 
@@ -79,7 +81,7 @@ export function StatCards({ stats }: { stats: DashboardStats }) {
               <Icon size={14} />
             </div>
           </div>
-          <p className="stat-card-value">{value.toLocaleString()}</p>
+          <p className="stat-card-value">{value}</p>
           <p className="stat-card-hint">{hint}</p>
         </div>
       ))}
