@@ -400,3 +400,34 @@ async def test_deduplication_and_step_ordering(test_project_key: str):
     await client.close()
 
 
+@pytest.mark.asyncio
+async def test_child_workflow_lineage(test_project_key: str):
+    """
+    Test Child Workflow Lineage:
+    Parent workflow triggers child workflow via ctx.child_workflow.
+    Verifies child workflow stores parent_workflow_id = parent_run_id on control plane.
+    """
+    client = ApexFlowClient(base_url="http://test", project_key=test_project_key)
+    client.http_client = AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"X-ApexFlow-Project-Key": test_project_key},
+    )
+
+    parent_run_id = await client.trigger_workflow("parent-pipeline")
+    parent_ctx = WorkflowContext(workflow_run_id=parent_run_id, client=client)
+
+    child_run_id = await parent_ctx.child_workflow(
+        "child-fulfillment-sub-workflow",
+        metadata={"item": "SKU-99"},
+    )
+
+    # Verify child workflow detail has parent_workflow_id linked
+    child_detail_res = await client.http_client.get(f"/api/v1/workflows/{child_run_id}")
+    assert child_detail_res.status_code == 200
+    assert child_detail_res.json()["parent_workflow_id"] == str(parent_run_id)
+
+    await client.close()
+
+
+

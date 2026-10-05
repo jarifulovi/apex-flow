@@ -150,3 +150,20 @@ class WorkflowContext:
         """Execute multiple independent steps concurrently."""
         tasks = [self.step(name, fn) for name, fn in steps]
         return await asyncio.gather(*tasks)
+
+    async def child_workflow(
+        self,
+        name: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        deduplication_id: Optional[str] = None,
+    ) -> uuid.UUID:
+        """
+        Trigger a child sub-workflow execution run linked to this parent workflow run.
+        Automatically attaches parent_workflow_id = self.workflow_run_id.
+        """
+        return await self.client.trigger_workflow(
+            name=name,
+            metadata=metadata,
+            deduplication_id=deduplication_id,
+            parent_workflow_id=self.workflow_run_id,
+        )
