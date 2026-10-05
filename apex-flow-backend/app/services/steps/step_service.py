@@ -49,6 +49,11 @@ class StepService:
         if not step:
             raise EntityNotFoundException("WorkflowStep", payload.step_id)
 
+        if payload.attempt_count is not None:
+            step.attempt_count = payload.attempt_count
+        elif step.attempt_count == 0:
+            step.attempt_count = 1
+
         step.output_payload = payload.output_payload or {}
         step.error_message = payload.error_message
         step.locked_until = None
@@ -64,6 +69,18 @@ class StepService:
         else:
             step.status = "success"
             step.completed_at = now
+
+            # Check if all steps under this workflow run are completed successfully
+            stmt_steps = select(WorkflowStep).where(WorkflowStep.workflow_run_id == step.workflow_run_id)
+            all_steps_res = await db.execute(stmt_steps)
+            all_steps = list(all_steps_res.scalars().all())
+
+            if all_steps and all(s.id == step.id or s.status == "success" for s in all_steps):
+                await db.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id == step.workflow_run_id)
+                    .values(status="completed", completed_at=now)
+                )
 
         await db.commit()
         await db.refresh(step)

@@ -34,6 +34,7 @@ class StepPollRequest(BaseModel):
 class StepReportPayload(BaseModel):
     step_id: uuid.UUID
     status: StepStatus
+    attempt_count: Optional[int] = None
     output_payload: Optional[Dict[str, Any]] = Field(default_factory=dict)
     error_message: Optional[str] = None
 

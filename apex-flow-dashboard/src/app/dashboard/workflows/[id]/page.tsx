@@ -17,6 +17,7 @@ import {
   RotateCcw,
   Ban,
   Maximize2,
+  FileCode2,
 } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
 import {
@@ -29,41 +30,51 @@ import {
 } from "@/features/workflows/api";
 import { Button } from "@/components/ui/button";
 import { ErrorInspectorModal } from "@/components/shared/ErrorInspectorModal";
+import { PayloadViewerModal } from "@/components/shared/PayloadViewerModal";
 
 const STATUS_CONFIG: Record<
   string,
   { label: string; className: string; dot: string; icon: React.ElementType }
 > = {
-  pending:   { label: "Pending",   className: "status-badge status-badge--pending",   dot: "status-dot--pending",   icon: Clock },
-  running:   { label: "Running",   className: "status-badge status-badge--running",   dot: "status-dot--running",   icon: Loader2 },
+  pending: { label: "Pending", className: "status-badge status-badge--pending", dot: "status-dot--pending", icon: Clock },
+  running: { label: "Running", className: "status-badge status-badge--running", dot: "status-dot--running", icon: Loader2 },
   completed: { label: "Completed", className: "status-badge status-badge--completed", dot: "status-dot--completed", icon: CheckCircle2 },
-  success:   { label: "Success",   className: "status-badge status-badge--completed", dot: "status-dot--completed", icon: CheckCircle2 },
-  failed:    { label: "Failed",    className: "status-badge status-badge--failed",    dot: "status-dot--failed",    icon: AlertTriangle },
+  success: { label: "Success", className: "status-badge status-badge--completed", dot: "status-dot--completed", icon: CheckCircle2 },
+  failed: { label: "Failed", className: "status-badge status-badge--failed", dot: "status-dot--failed", icon: AlertTriangle },
   cancelled: { label: "Cancelled", className: "status-badge status-badge--failed border-amber-500/30 text-amber-300 bg-amber-950/40", dot: "bg-amber-400", icon: Ban },
-  queued:    { label: "Queued",    className: "status-badge status-badge--pending",   dot: "status-dot--pending",   icon: Clock },
+  queued: { label: "Queued", className: "status-badge status-badge--pending", dot: "status-dot--pending", icon: Clock },
 };
 
 function PayloadBox({ label, payload }: { label: string; payload?: Record<string, unknown> }) {
-  const [open, setOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const isEmpty = !payload || Object.keys(payload).length === 0;
 
   if (isEmpty) return null;
 
   return (
-    <div className="mt-2 border border-white/5 rounded-lg bg-[#111118] overflow-hidden text-xs">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-colors font-mono"
-      >
-        <span>{label}</span>
-        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-      </button>
-      {open && (
-        <pre className="p-3 bg-black/40 text-emerald-400 text-[11px] font-mono overflow-x-auto border-t border-white/5">
-          {JSON.stringify(payload, null, 2)}
-        </pre>
+    <>
+      <div className="mt-2 border border-white/5 rounded-lg bg-[#111118] overflow-hidden text-xs">
+        <button
+          onClick={() => setModalOpen(true)}
+          className="w-full px-3 py-1.5 flex items-center justify-between text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-colors font-mono"
+        >
+          <span className="flex items-center gap-1.5">
+            <FileCode2 size={13} className="text-violet-400" />
+            {label}
+          </span>
+          <span className="text-[10px] text-violet-300 bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20">Inspect JSON</span>
+        </button>
+      </div>
+
+      {modalOpen && (
+        <PayloadViewerModal
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title={label}
+          payload={payload}
+        />
       )}
-    </div>
+    </>
   );
 }
 
@@ -289,17 +300,16 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                   <div key={step.id} className="relative group">
                     {/* Timeline Node Dot */}
                     <div
-                      className={`absolute -left-[1.85rem] top-1.5 h-4 w-4 rounded-full border-2 border-[#111118] flex items-center justify-center ${
-                        step.status === "success"
+                      className={`absolute -left-[1.85rem] top-1.5 h-4 w-4 rounded-full border-2 border-[#111118] flex items-center justify-center ${step.status === "success"
                           ? "bg-emerald-400"
                           : step.status === "failed"
-                          ? "bg-red-500 animate-pulse"
-                          : step.status === "cancelled"
-                          ? "bg-amber-400"
-                          : step.status === "running"
-                          ? "bg-cyan-400 animate-ping"
-                          : "bg-amber-400"
-                      }`}
+                            ? "bg-red-500 animate-pulse"
+                            : step.status === "cancelled"
+                              ? "bg-amber-400"
+                              : step.status === "running"
+                                ? "bg-cyan-400 animate-ping"
+                                : "bg-amber-400"
+                        }`}
                     />
 
                     <div className="bg-[#161620] border border-white/10 rounded-xl p-4 transition-all hover:border-violet-500/40">

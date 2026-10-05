@@ -112,6 +112,7 @@ class WorkflowContext:
                 report_payload = {
                     "step_id": step_id,
                     "status": "success",
+                    "attempt_count": attempt,
                     "output_payload": output_data,
                 }
                 await self.client.http_client.post(
@@ -136,6 +137,7 @@ class WorkflowContext:
         report_payload = {
             "step_id": step_id,
             "status": "failed",
+            "attempt_count": attempt,
             "error_message": error_msg,
         }
         await self.client.http_client.post(

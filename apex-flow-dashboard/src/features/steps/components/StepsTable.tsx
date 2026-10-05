@@ -5,14 +5,14 @@ import {
   AlertTriangle,
   Loader2,
   Clock,
-  ChevronDown,
-  ChevronRight,
   Timer,
   Lock,
   XCircle,
+  FileCode2,
 } from "lucide-react";
 import type { WorkflowStep } from "@/features/steps/api";
 import { formatDurationMs } from "@/features/workflows/api";
+import { PayloadViewerModal } from "@/components/shared/PayloadViewerModal";
 
 const STATUS_CONFIG: Record<
   WorkflowStep["status"],
@@ -34,26 +34,37 @@ function formatDate(iso: string) {
   });
 }
 
-function PayloadCell({ payload }: { payload: Record<string, unknown> }) {
-  const [open, setOpen] = useState(false);
+function PayloadCell({
+  payload,
+  stepName,
+}: {
+  payload: Record<string, unknown>;
+  stepName: string;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
   const isEmpty = !payload || Object.keys(payload).length === 0;
+
   if (isEmpty) return <span className="table-date">—</span>;
+
   return (
-    <div className="payload-cell">
+    <>
       <button
-        className="payload-toggle"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
+        className="px-2 py-1 rounded bg-[#161622] hover:bg-violet-600/20 border border-white/10 text-[11px] text-violet-300 font-mono flex items-center gap-1.5 transition-colors"
+        onClick={() => setModalOpen(true)}
       >
-        <span>payload</span>
-        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        <FileCode2 size={12} />
+        <span>Payload</span>
       </button>
-      {open && (
-        <pre className="payload-json">
-          {JSON.stringify(payload, null, 2)}
-        </pre>
+
+      {modalOpen && (
+        <PayloadViewerModal
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title={`Output Payload • ${stepName}`}
+          payload={payload}
+        />
       )}
-    </div>
+    </>
   );
 }
 
@@ -141,7 +152,7 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
                   </span>
                 </td>
                 <td>
-                  <PayloadCell payload={step.output_payload} />
+                  <PayloadCell payload={step.output_payload} stepName={step.step_name} />
                 </td>
                 <td>
                   {step.error_message ? (
