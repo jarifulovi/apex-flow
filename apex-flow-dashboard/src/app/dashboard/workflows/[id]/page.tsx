@@ -190,6 +190,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
       <Header
         title={name}
         subtitle={`Workflow Run ID: ${detail.id}`}
+        backUrl="/dashboard/workflows"
         actions={
           <div className="flex items-center gap-2">
             <Button

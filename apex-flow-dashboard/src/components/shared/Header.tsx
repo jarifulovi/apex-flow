@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Bell, CheckCircle2, ShieldAlert, X } from "lucide-react";
+import Link from "next/link";
+import { Bell, CheckCircle2, ShieldAlert, X, ChevronLeft } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/features/auth/hooks";
 import { ProjectSelector } from "@/features/projects/components/ProjectSelector";
@@ -10,6 +11,7 @@ interface HeaderProps {
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
+  backUrl?: string;
 }
 
 function getInitials(name?: string, email?: string): string {
@@ -18,7 +20,7 @@ function getInitials(name?: string, email?: string): string {
   return "??";
 }
 
-export function Header({ title, subtitle, actions }: HeaderProps) {
+export function Header({ title, subtitle, actions, backUrl }: HeaderProps) {
   const { user } = useAuth();
   const [openNotifs, setOpenNotifs] = useState(false);
 
@@ -43,9 +45,20 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
 
   return (
     <header className="dashboard-header">
-      <div className="dashboard-header-left">
-        <h1 className="dashboard-header-title">{title}</h1>
-        {subtitle && <p className="dashboard-header-subtitle">{subtitle}</p>}
+      <div className="dashboard-header-left flex items-center gap-3">
+        {backUrl && (
+          <Link
+            href={backUrl}
+            className="flex items-center justify-center h-9 w-9 rounded-lg bg-[#1b1b26] hover:bg-[#232332] border border-white/10 text-zinc-300 hover:text-white transition-colors shrink-0"
+            title="Back to list"
+          >
+            <ChevronLeft size={18} />
+          </Link>
+        )}
+        <div>
+          <h1 className="dashboard-header-title">{title}</h1>
+          {subtitle && <p className="dashboard-header-subtitle">{subtitle}</p>}
+        </div>
       </div>
       <div className="dashboard-header-right">
         <ProjectSelector />
