@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import inspect
 import os
 import random
 import signal
@@ -231,22 +232,41 @@ class ApexFlowClient:
                         # Dispatch to registered step handler or workflow definition
                         if step_name in self._step_handlers:
                             handler = self._step_handlers[step_name]
-                            if asyncio.iscoroutinefunction(handler):
-                                result = await handler(input_payload)
-                            else:
-                                result = handler(input_payload)
+                            try:
+                                is_async = (
+                                    asyncio.iscoroutinefunction(handler)
+                                    or inspect.iscoroutinefunction(handler)
+                                    or inspect.iscoroutinefunction(getattr(handler, "__call__", None))
+                                )
+                                if is_async:
+                                    result = await handler(input_payload)
+                                else:
+                                    result = handler(input_payload)
 
-                            output_val = result if isinstance(result, dict) else {"result": result}
-                            offloaded_output, _ = await StorageResolver.offload_if_needed(
-                                self.http_client, self.base_url, output_val
-                            )
+                                if asyncio.iscoroutine(result):
+                                    result = await result
 
-                            report_payload = {
-                                "step_id": step_id,
-                                "status": "success",
-                                "output_payload": offloaded_output if isinstance(offloaded_output, dict) else {"result": offloaded_output},
-                            }
-                            await self._request_with_retry("POST", f"{self.base_url}/api/v1/steps/report", json=report_payload)
+                                output_val = result if isinstance(result, dict) else {"result": result}
+                                offloaded_output, _ = await StorageResolver.offload_if_needed(
+                                    self.http_client, self.base_url, output_val
+                                )
+
+                                report_payload = {
+                                    "step_id": step_id,
+                                    "status": "success",
+                                    "output_payload": offloaded_output if isinstance(offloaded_output, dict) else {"result": offloaded_output},
+                                    "attempt_count": step_data.get("attempt_count", 1),
+                                }
+                                await self._request_with_retry("POST", f"{self.base_url}/api/v1/steps/report", json=report_payload)
+                            except Exception as step_err:
+                                print(f"❌ Worker step '{step_name}' failed execution: {step_err}")
+                                report_payload = {
+                                    "step_id": step_id,
+                                    "status": "failed",
+                                    "error_message": str(step_err),
+                                    "attempt_count": step_data.get("attempt_count", 1),
+                                }
+                                await self._request_with_retry("POST", f"{self.base_url}/api/v1/steps/report", json=report_payload)
                         elif self._workflows:
                             ctx = WorkflowContext(workflow_run_id=workflow_run_id, client=self, store_payloads=self.store_payloads)
                             for wf_name, wf_func in self._workflows.items():

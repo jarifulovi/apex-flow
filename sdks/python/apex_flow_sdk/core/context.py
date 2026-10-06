@@ -109,6 +109,11 @@ class WorkflowContext:
         import inspect
         sig = inspect.signature(fn)
         has_params = len(sig.parameters) > 0
+        is_async = (
+            asyncio.iscoroutinefunction(fn)
+            or inspect.iscoroutinefunction(fn)
+            or inspect.iscoroutinefunction(getattr(fn, "__call__", None))
+        )
 
         while attempt <= retries:
             attempt += 1
@@ -117,15 +122,12 @@ class WorkflowContext:
                     resolved_input = await StorageResolver.resolve_payload(
                         self.client.http_client, self.client.base_url, input_payload
                     )
-                    if asyncio.iscoroutinefunction(fn):
-                        output = await fn(resolved_input)
-                    else:
-                        output = fn(resolved_input)
+                    output = await fn(resolved_input) if is_async else fn(resolved_input)
                 else:
-                    if asyncio.iscoroutinefunction(fn):
-                        output = await fn()
-                    else:
-                        output = fn()
+                    output = await fn() if is_async else fn()
+
+                if asyncio.iscoroutine(output):
+                    output = await output
 
                 # Report success to control plane
                 output_data = {}

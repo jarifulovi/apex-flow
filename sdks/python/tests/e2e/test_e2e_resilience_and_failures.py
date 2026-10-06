@@ -185,3 +185,79 @@ async def test_targeted_worker_step_names_filtering(test_client_harness: ApexFlo
     assert poll_cpu.status_code == 200
     cpu_step = poll_cpu.json()
     assert cpu_step["step_name"] == "cpu_task"
+
+
+@pytest.mark.asyncio
+async def test_simulated_transient_failure_worker_auto_retry(test_client_harness: ApexFlowClient):
+    """
+    Test E2E worker execution with SimulatedStepFunction handling transient retries:
+    - Step configured to fail the first 2 attempts with a transient error.
+    - Worker attempt 1: fails and re-queues step.
+    - Worker attempt 2: fails and re-queues step.
+    - Worker attempt 3: succeeds! Step state set to success.
+    """
+    from tests.helpers import simulated_retry_step
+
+    client = test_client_harness
+    run_id = await client.trigger_workflow("simulated-retry-pipeline")
+
+    # Queue step with max_attempts=3
+    step_res = await client.http_client.post(
+        "/api/v1/steps",
+        json={"workflow_id": str(run_id), "step_name": "transient_api_step", "max_attempts": 3},
+    )
+    assert step_res.status_code in (200, 201)
+
+    # Register simulated step function that fails first 2 attempts
+    simulated_fn = simulated_retry_step(fail_attempts=2, error_msg="Simulated 503 Service Unavailable")
+
+    @client.step("transient_api_step")
+    async def handle_transient_step(payload):
+        return await simulated_fn(payload)
+
+    # Attempt 1: fails & re-queues
+    await client.start_worker(step_names=["transient_api_step"], poll_interval=0.01, run_once=True)
+    step_res1 = await client.http_client.get(f"/api/v1/steps?limit=10")
+    s1 = [s for s in step_res1.json() if s["workflow_run_id"] == str(run_id)][0]
+    assert s1["status"] == "queued"
+    assert s1["attempt_count"] == 1
+
+    # Attempt 2: fails & re-queues
+    await client.start_worker(step_names=["transient_api_step"], poll_interval=0.01, run_once=True)
+    step_res2 = await client.http_client.get(f"/api/v1/steps?limit=10")
+    s2 = [s for s in step_res2.json() if s["workflow_run_id"] == str(run_id)][0]
+    assert s2["status"] == "queued"
+    assert s2["attempt_count"] == 2
+
+    # Attempt 3: succeeds!
+    await client.start_worker(step_names=["transient_api_step"], poll_interval=0.01, run_once=True)
+    step_res3 = await client.http_client.get(f"/api/v1/steps?limit=10")
+    s3 = [s for s in step_res3.json() if s["workflow_run_id"] == str(run_id)][0]
+    assert s3["status"] == "success"
+    assert s3["attempt_count"] == 3
+
+    await client.complete_workflow(run_id)
+    wf_res = await client.http_client.get(f"/api/v1/workflows/{run_id}")
+    ApexFlowAssert.assert_workflow_run(wf_res.json(), status="completed")
+
+
+@pytest.mark.asyncio
+async def test_simulated_slow_execution_pipeline(test_client_harness: ApexFlowClient):
+    """
+    Test E2E workflow pipeline with simulated slow step I/O latency.
+    """
+    from tests.helpers import simulated_slow_step
+
+    client = test_client_harness
+    run_id = await client.trigger_workflow("simulated-slow-pipeline")
+    ctx = WorkflowContext(workflow_run_id=run_id, client=client)
+
+    slow_step_fn = simulated_slow_step(delay_seconds=0.05, return_val={"computed_matrix": [1, 2, 3]})
+
+    res = await ctx.step("slow_compute_step", slow_step_fn)
+    assert res == {"computed_matrix": [1, 2, 3]}
+
+    await client.complete_workflow(run_id)
+    wf_res = await client.http_client.get(f"/api/v1/workflows/{run_id}")
+    ApexFlowAssert.assert_workflow_run(wf_res.json(), status="completed")
+
