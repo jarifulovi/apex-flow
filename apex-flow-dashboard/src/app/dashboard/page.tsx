@@ -30,7 +30,7 @@ export default function DashboardPage() {
       failedSteps: 0,
       activeKeysCount: 0,
       activeWorkersCount: 0,
-      successRatePercent: 100,
+      successRatePercent: 0,
       avgDurationSeconds: 0,
     },
     activities: [],

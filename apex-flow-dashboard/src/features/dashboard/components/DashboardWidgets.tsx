@@ -48,7 +48,7 @@ export function StatCards({ stats }: { stats: DashboardStats }) {
     {
       id: "stat-success-rate",
       label: "Success Rate",
-      value: `${(stats.successRatePercent ?? 100).toFixed(1)}%`,
+      value: `${(stats.successRatePercent ?? 0).toFixed(1)}%`,
       icon: TrendingUp,
       color: "emerald",
       hint: "Terminal run completion rate",

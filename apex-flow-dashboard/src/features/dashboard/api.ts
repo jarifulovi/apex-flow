@@ -49,7 +49,7 @@ export async function fetchDashboardOverview(token: string, projectId?: string) 
 
   const completedWfs = workflows.filter((w) => w.status === "completed").length;
   const successRatePercent = metrics?.success_rate_percent ?? (
-    workflows.length > 0 ? Math.round((completedWfs / workflows.length) * 1000) / 10 : 100.0
+    workflows.length > 0 ? Math.round((completedWfs / workflows.length) * 1000) / 10 : 0.0
   );
   const avgDurationSeconds = metrics?.avg_duration_seconds ?? 0.0;
 
