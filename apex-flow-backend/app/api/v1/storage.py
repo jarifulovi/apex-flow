@@ -29,7 +29,10 @@ async def upload_file(
     content_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
 
     adapter = get_storage_adapter()
-    stored_key = await adapter.save(key, content, content_type=content_type)
+    try:
+        stored_key = await adapter.save(key, content, content_type=content_type)
+    except ValueError as e:
+        raise HTTPException(status_code=413, detail=str(e))
     
     ref = PayloadPolicyManager.create_ref(
         storage_key=stored_key,

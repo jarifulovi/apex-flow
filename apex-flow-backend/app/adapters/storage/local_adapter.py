@@ -1,11 +1,11 @@
 import os
 from pathlib import Path
-from typing import Optional
 from app.adapters.storage.base import BaseStorageAdapter
+from app.core.config import settings
 
 
 class LocalStorageAdapter(BaseStorageAdapter):
-    """Local file system storage adapter with atomic writes for durability."""
+    """Local file system storage adapter with atomic writes and 2MB payload ceiling."""
 
     def __init__(self, base_dir: str = ".apexflow_storage"):
         self.base_dir = Path(base_dir).resolve()
@@ -22,6 +22,12 @@ class LocalStorageAdapter(BaseStorageAdapter):
     async def save(
         self, storage_key: str, content: bytes, content_type: str = "application/octet-stream"
     ) -> str:
+        # Enforce single payload ceiling (2 MB max)
+        if len(content) > settings.PAYLOAD_MAX_SINGLE_BYTES:
+            raise ValueError(
+                f"Payload size ({len(content)} bytes) exceeds maximum single payload limit ({settings.PAYLOAD_MAX_SINGLE_BYTES} bytes)."
+            )
+
         target_path = self._get_path(storage_key)
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -52,3 +58,4 @@ class LocalStorageAdapter(BaseStorageAdapter):
             target_path.unlink()
             return True
         return False
+

@@ -1,6 +1,7 @@
 import asyncio
 from typing import Optional
 from app.adapters.storage.base import BaseStorageAdapter
+from app.core.config import settings
 
 try:
     import boto3
@@ -12,7 +13,7 @@ except ImportError:
 
 
 class S3StorageAdapter(BaseStorageAdapter):
-    """S3 / MinIO storage adapter using boto3."""
+    """S3 / Supabase Storage adapter using boto3 with 2MB payload ceiling."""
 
     def __init__(
         self,
@@ -37,6 +38,12 @@ class S3StorageAdapter(BaseStorageAdapter):
     async def save(
         self, storage_key: str, content: bytes, content_type: str = "application/octet-stream"
     ) -> str:
+        # Enforce single payload ceiling (2 MB max)
+        if len(content) > settings.PAYLOAD_MAX_SINGLE_BYTES:
+            raise ValueError(
+                f"Payload size ({len(content)} bytes) exceeds maximum single payload limit ({settings.PAYLOAD_MAX_SINGLE_BYTES} bytes)."
+            )
+
         loop = asyncio.get_running_loop()
         def _upload():
             self.s3_client.put_object(
@@ -77,3 +84,4 @@ class S3StorageAdapter(BaseStorageAdapter):
             return True
         except ClientError:
             return False
+

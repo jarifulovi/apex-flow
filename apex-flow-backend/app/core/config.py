@@ -26,8 +26,9 @@ class Settings(BaseSettings):
     # Database connection URL (Required in environment / .env)
     DATABASE_URL: str
 
-    # Storage settings for offloaded payloads (>250KB or file artifacts)
-    PAYLOAD_MAX_INLINE_BYTES: int = 250 * 1024  # 250 KB
+    # Storage settings for offloaded payloads (>250KB up to 2MB control plane ceiling)
+    PAYLOAD_MAX_INLINE_BYTES: int = 250 * 1024  # 250 KB inline threshold
+    PAYLOAD_MAX_SINGLE_BYTES: int = 2 * 1024 * 1024  # 2 MB control-plane payload limit
     STORAGE_PROVIDER: str = "local"  # "local" or "s3"
     STORAGE_LOCAL_DIR: str = ".apexflow_storage"
     S3_BUCKET_NAME: Optional[str] = None
