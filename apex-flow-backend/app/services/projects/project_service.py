@@ -18,7 +18,13 @@ class ProjectService:
         owner_id: uuid.UUID,
         payload: ProjectCreate,
     ) -> Project:
-        """Create a new project for a user."""
+        """Create a new project for a user with duplicate name check."""
+        existing = await db.execute(
+            select(Project).where(Project.owner_id == owner_id, Project.name == payload.name)
+        )
+        if existing.scalar_one_or_none():
+            raise ValueError(f"A project named '{payload.name}' already exists.")
+
         project = Project(
             owner_id=owner_id,
             name=payload.name,
@@ -69,17 +75,23 @@ class ProjectService:
         db: AsyncSession,
         owner_id: uuid.UUID,
     ) -> Project:
-        """Get or automatically create a Default Project for a user."""
+        """Get or automatically create a single Default Project for a user."""
         query = (
             select(Project)
             .where(Project.owner_id == owner_id)
             .order_by(Project.created_at.asc())
-            .limit(1)
         )
         result = await db.execute(query)
-        project = result.scalar_one_or_none()
+        projects = list(result.scalars().all())
 
-        if not project:
+        if projects:
+            default_proj = next(
+                (p for p in projects if p.name == "Default Project" or (p.metadata_ and p.metadata_.get("is_default"))),
+                projects[0],
+            )
+            return default_proj
+
+        try:
             project = Project(
                 owner_id=owner_id,
                 name="Default Project",
@@ -88,8 +100,13 @@ class ProjectService:
             db.add(project)
             await db.commit()
             await db.refresh(project)
-
-        return project
+            return project
+        except Exception:
+            await db.rollback()
+            fallback_res = await db.execute(
+                select(Project).where(Project.owner_id == owner_id).order_by(Project.created_at.asc()).limit(1)
+            )
+            return fallback_res.scalar_one()
 
     @staticmethod
     async def get_project_by_id(

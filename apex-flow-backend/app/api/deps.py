@@ -58,20 +58,14 @@ def _decode_bearer(authorization: Optional[str]) -> Dict[str, Any]:
 
 async def get_current_user_from_jwt(
     authorization: Optional[str] = Header(None),
-    db: AsyncSession = Depends(get_db),
 ) -> uuid.UUID:
     """
     Dependency for Dashboard UI endpoints.
     Authenticates requests via the Bearer Supabase JWT in Authorization header.
-    Returns user_id / owner_id (sub claim) and auto-ensures Default Project exists in DB.
+    Returns user_id / owner_id (sub claim).
     """
     payload = _decode_bearer(authorization)
-    user_id = _extract_user_id(payload)
-    try:
-        await ProjectService.get_or_create_default_project(db=db, owner_id=user_id)
-    except Exception as e:
-        print(f"Warning: Failed to auto-create default project on auth: {e}")
-    return user_id
+    return _extract_user_id(payload)
 
 
 async def get_current_user_from_any_auth(
