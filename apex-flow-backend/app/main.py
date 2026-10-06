@@ -13,11 +13,38 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS middleware setup
-if settings.BACKEND_CORS_ORIGINS:
+# CORS middleware setup - robust support for Vercel, Render, and local development
+raw_origins = settings.BACKEND_CORS_ORIGINS
+if isinstance(raw_origins, str):
+    parsed_origins = [i.strip().rstrip("/") for i in raw_origins.split(",") if i.strip()]
+elif isinstance(raw_origins, list):
+    parsed_origins = [str(i).strip().rstrip("/") for i in raw_origins if i]
+else:
+    parsed_origins = []
+
+default_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "https://apex-flow-theta.vercel.app",
+]
+
+all_origins = list(set(parsed_origins + default_origins))
+
+if "*" in parsed_origins or "*" in all_origins:
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=all_origins,
+        allow_origin_regex=r"https://.*\.vercel\.app",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

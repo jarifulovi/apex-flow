@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import UnauthorizedException, decode_supabase_jwt
 from app.schemas.project import ProjectKeyContext
-from app.services.projects import ProjectKeyService
+from app.services.projects import ProjectKeyService, ProjectService
 
 
 async def get_current_project_key_context(
@@ -58,14 +58,20 @@ def _decode_bearer(authorization: Optional[str]) -> Dict[str, Any]:
 
 async def get_current_user_from_jwt(
     authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
 ) -> uuid.UUID:
     """
     Dependency for Dashboard UI endpoints.
     Authenticates requests via the Bearer Supabase JWT in Authorization header.
-    Returns user_id / owner_id (sub claim).
+    Returns user_id / owner_id (sub claim) and auto-ensures Default Project exists in DB.
     """
     payload = _decode_bearer(authorization)
-    return _extract_user_id(payload)
+    user_id = _extract_user_id(payload)
+    try:
+        await ProjectService.get_or_create_default_project(db=db, owner_id=user_id)
+    except Exception as e:
+        print(f"Warning: Failed to auto-create default project on auth: {e}")
+    return user_id
 
 
 async def get_current_user_from_any_auth(
