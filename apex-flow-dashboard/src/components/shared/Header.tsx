@@ -45,20 +45,27 @@ export function Header({ title, subtitle, actions, backUrl }: HeaderProps) {
 
   return (
     <header className="dashboard-header">
-      <div className="dashboard-header-left flex items-center gap-3">
-        {backUrl && (
-          <Link
-            href={backUrl}
-            className="flex items-center justify-center h-9 w-9 rounded-lg bg-[#1b1b26] hover:bg-[#232332] border border-white/10 text-zinc-300 hover:text-white transition-colors shrink-0"
-            title="Back to list"
-          >
-            <ChevronLeft size={18} />
-          </Link>
+      <div className="dashboard-header-left">
+        {backUrl ? (
+          <div className="flex items-center gap-3">
+            <Link
+              href={backUrl}
+              className="flex items-center justify-center h-8 w-8 rounded-lg bg-[#1b1b26] hover:bg-[#232332] border border-white/10 text-zinc-300 hover:text-white transition-colors shrink-0"
+              title="Back"
+            >
+              <ChevronLeft size={16} />
+            </Link>
+            <div>
+              <h1 className="dashboard-header-title">{title}</h1>
+              {subtitle && <p className="dashboard-header-subtitle">{subtitle}</p>}
+            </div>
+          </div>
+        ) : (
+          <>
+            <h1 className="dashboard-header-title">{title}</h1>
+            {subtitle && <p className="dashboard-header-subtitle">{subtitle}</p>}
+          </>
         )}
-        <div>
-          <h1 className="dashboard-header-title">{title}</h1>
-          {subtitle && <p className="dashboard-header-subtitle">{subtitle}</p>}
-        </div>
       </div>
       <div className="dashboard-header-right">
         <ProjectSelector />
