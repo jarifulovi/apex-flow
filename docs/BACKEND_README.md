@@ -6,13 +6,13 @@
 
 ## 📌 Context & Overview
 
-The **ApexFlow Backend Control Plane** is a lightweight, zero-knowledge state coordinator built with FastAPI and PostgreSQL. It manages workflow execution state, coordinates step-level queue sequencing, tracks worker heartbeats, and serves execution telemetry to the dashboard. 
+The **ApexFlow Backend Control Plane** is a lightweight, zero-knowledge state coordinator built with FastAPI and PostgreSQL. It manages workflow execution state, coordinates step-level queue sequencing, tracks worker leases, and serves execution telemetry to the dashboard. 
 
 The backend **never executes user business logic**, nor does it store sensitive API credentials or model keys. All workflow execution occurs locally on developer workers.
 
 ---
 
-## 🛠️ Technology Stack & Dependency Specifications
+## 🛠️ Technology Stack & Architecture Specifications
 
 | Component | Technology | Version Constraint | Purpose |
 | :--- | :--- | :--- | :--- |
@@ -23,11 +23,10 @@ The backend **never executes user business logic**, nor does it store sensitive 
 | **Config** | Pydantic Settings | `>= 2.0.0` | Type-safe environment configuration loader. |
 | **Validation** | Pydantic | `>= 2.7.0` | Request serialization & payload schema validation. |
 | **Security** | PyJWT | `>= 2.8.0` | Dashboard Supabase Bearer JWT decoding & validation. |
-| **Testing** | Pytest & Pytest-Asyncio | `>= 8.0.0` | Automated integration and E2E test suite. |
 
 ---
 
-## 🏗️ Architecture & Component Layers (Ports & Adapters Pattern)
+## 🏗️ Architecture & Component Layers (Hexagonal / Ports & Adapters)
 
 The backend follows **Hexagonal Architecture (Ports & Adapters)** to decouple core workflow domain logic from infrastructure integrations:
 
@@ -38,7 +37,7 @@ The backend follows **Hexagonal Architecture (Ports & Adapters)** to decouple co
     ┌──────────────────────────────────────────────────────────────────┐
     │                     FastAPI API Router Layer                     │
     │        (workflows.py, steps.py, storage.py, keys.py, health.py)  │
-    └────────────────────────────────┬─────────────────────────────────┘
+    └────────────────┬─────────────────────────────────────────────────┘
                                      │
                                      ▼
     ┌──────────────────────────────────────────────────────────────────┐
@@ -64,21 +63,29 @@ The backend follows **Hexagonal Architecture (Ports & Adapters)** to decouple co
     - `adapters/storage/local_adapter.py`: `LocalStorageAdapter` with atomic disk writes (`write` + `os.fsync` + `os.replace`).
     - `adapters/storage/s3_adapter.py`: `S3StorageAdapter` supporting AWS S3, MinIO, Cloudflare R2, and DigitalOcean Spaces.
     - `adapters/storage/policy.py`: `PayloadPolicyManager` enforcing size thresholds and `$apexflow_ref` creation.
-  - **Future Pluggable Adapters**:
-    - `adapters/notifications/`: Slack, PagerDuty, Email, and Webhook dispatchers for workflow alerts.
-    - `adapters/metrics/`: Prometheus and Datadog telemetry exporters.
-    - `adapters/queues/`: Decoupled message brokers (Redis, SQS, NATS) if moving beyond Postgres row-locks.
 
 ---
 
-## ⚡ Key Backend Systems & Architecture Features
+## ⚡ Core Engine Architecture & Resilience Mechanisms
 
-### 1. High-Throughput Scoped Queue Polling
-- Uses PostgreSQL `SELECT FOR UPDATE OF WorkflowStep SKIP LOCKED`.
-- Scoping row locks strictly to `workflow_steps` prevents table-level lock contention, allowing multiple workers to poll and execute steps for the same workflow run in parallel.
+### 1. Database Connection Pooling & Fault Recovery
+The database engine (`app/core/database.py`) is engineered for production stability under heavy concurrency and transient network drops:
+- **`pool_pre_ping=True`**: Tests connections before usage to automatically drop and replace stale/dead connections.
+- **`pool_recycle=1800`**: Recycles database connections every 30 minutes to prevent firewall or PostgreSQL server-side connection timeout drops.
+- **Connection Pool Tuning**: Configures `pool_size=20` and `max_overflow=10` for high concurrency without PostgreSQL connection exhaustion.
+
+### 2. High-Throughput Scoped Queue Polling (`QueueService`)
+- Uses dialect-aware PostgreSQL `SELECT FOR UPDATE OF WorkflowStep SKIP LOCKED`.
+- Scoping row locks strictly to `workflow_steps` prevents table-level lock contention, allowing concurrent workers to poll and execute steps for the same or different workflow runs in parallel.
 - Automatically recovers stale step leases (`recover_stale_locks`) if a worker process crashes or loses network connectivity mid-execution.
 
-### 2. Large Payload Offloading & 250KB Size Threshold Policy
+### 3. Cascading Parent-Child Workflow Lifecycle (`WorkflowService`)
+The backend provides automatic sub-tree lifecycle management for hierarchical workflows:
+- **Parent Cancellation Cascade**: Cancelling a parent workflow run (`cancel_workflow_run`) automatically updates active child sub-workflows (`parent_workflow_id == workflow_run_id` in `pending`/`running`) to `cancelled`.
+- **Parent Restart Cascade**: Restarting a parent workflow run (`restart_workflow_run`) automatically resets failed or cancelled child sub-workflows back to `pending`.
+- **In-Memory ORM Synchronization**: Updates both in-memory model instances and database rows during lifecycle mutations to ensure consistent API responses.
+
+### 4. Large Payload Offloading & 250KB Threshold Policy
 To maintain database performance and prevent `jsonb` table bloat:
 - **Small Payloads ($\le 250\text{ KB}$)**: Stored inline directly in PostgreSQL `jsonb`.
 - **Large Payloads / Files ($> 250\text{ KB}$)**: Automatically offloaded to object storage (S3/MinIO) or a durable local volume directory (`.apexflow_storage/payloads/`).
@@ -94,19 +101,15 @@ To maintain database performance and prevent `jsonb` table bloat:
   }
   ```
 
-### 3. Fast $O(1)$ Step Status Reporting & Explicit SDK Completion
+### 5. Fast $O(1)$ Step Status Reporting & Explicit SDK Completion
 - Step execution reporting (`POST /api/v1/steps/report`) performs fast $O(1)$ status writes without expensive database subqueries or status guessing.
 - Workflow run completion is triggered explicitly by the SDK (`POST /api/v1/workflows/{id}/complete`) when top-level workflow code finishes, avoiding premature status flips.
 
-### 4. Idempotency & Deduplication Engine
+### 6. Idempotency & Deduplication Engine
 - Supports optional `deduplication_id` on workflow creation (`POST /api/v1/workflows`).
 - Enforces database-level idempotency via a filtered unique index (`idx_workflow_runs_dedup`), returning active workflow runs immediately if a duplicate trigger request is received.
 
-### 5. Interactive Workflow Control Actions
-- **Cancel Workflow** (`POST /api/v1/workflows/{id}/cancel`): Immediately cancels an active workflow run and marks all pending/queued steps as `cancelled`.
-- **Restart Workflow** (`POST /api/v1/workflows/{id}/restart`): Resets failed or cancelled steps back to `queued` for worker pickup and re-activates the workflow run.
-
-### 6. Dual Storage Retention & Pruning Strategy (`pg-cron`)
+### 7. Dual Storage Retention & Pruning Strategy (`pg-cron`)
 To prevent database storage bloating on Supabase free-tier PostgreSQL databases:
 - **Soft Payload Pruning** (`prune_old_payloads`): Daily at 02:00 AM UTC, clears JSON payloads (`{}`) for completed runs older than 7 days, reducing disk usage by 90%+ while preserving run telemetry metrics for 30 days.
 - **Hard Batched Delete** (`prune_old_workflow_runs_batched`): Daily at 03:00 AM UTC, deletes terminal runs older than 30 days in non-blocking batches of 2,000 rows.

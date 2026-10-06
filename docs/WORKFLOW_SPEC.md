@@ -58,7 +58,7 @@ A **Workflow Run** represents a single execution instance of a named workflow.
 
 ### Key Operational Rules:
 1. **Idempotency & Deduplication**: If triggered with a `deduplication_id`, the control plane checks for an existing active run (`PENDING` or `RUNNING`) and returns the existing run ID, preventing duplicate workflow executions.
-2. **Interactive Restart**: Failed or cancelled runs can be restarted, resetting terminal step statuses back to `QUEUED` while preserving previously completed step checkpoints.
+2. **Interactive Restart**: Failed or cancelled runs can be restarted via `POST /api/v1/workflows/{id}/restart`. Restarting resets failed/cancelled steps to `QUEUED` while preserving previously completed step checkpoints.
 
 ---
 
@@ -76,19 +76,20 @@ A **Workflow Step** represents an atomic unit of execution within a workflow run
 - **`QUEUED`**: Registered in the control plane database queue awaiting worker pickup.
 - **`RUNNING`**: Acquired by a worker process via PostgreSQL row locking (`FOR UPDATE SKIP LOCKED`).
 - **`SUCCESS`**: Executed successfully on worker; output payload memoized.
-- **`FAILED`**: Encountered a non-retryable failure or exhausted max attempt limits.
+- **`FAILED`**: Encountered a non-retryable failure or exhausted max attempt limits (`attempt_count == max_attempts`).
 - **`CANCELLED`**: Marked cancelled due to parent workflow cancellation.
 
 ### Step Execution Guarantees:
 - **Sequence Tracking (`step_order`)**: Each step is assigned a 1-based integer sequence (`step_order = 1, 2, 3...`), guaranteeing deterministic chronological ordering in database timeline queries.
-- **Concurrency & Non-Blocking Polling**: Workers poll queued steps using PostgreSQL `FOR UPDATE OF WorkflowStep SKIP LOCKED`. Workers lock only the specific step row, allowing multiple workers to poll steps for the same workflow in parallel without lock contention.
+- **Atomic Acquisition (`FOR UPDATE SKIP LOCKED`)**: Workers poll queued steps using dialect-aware row locking. Workers lock only the specific step row, allowing multiple workers to poll steps for the same workflow in parallel without lock contention.
 - **Lease Locking & Stale Recovery**: Acquired steps receive a temporary lease lock (`locked_until`). If a worker crashes, the control plane automatically re-queues expired steps (`recover_stale_locks`).
+- **Attempt Tracking & Retry Limits**: Each failure report increments `attempt_count`. If `attempt_count < max_attempts`, status resets to `QUEUED` for retry; if `attempt_count == max_attempts`, status transitions to `FAILED` and marks the parent workflow run `FAILED`.
 
 ---
 
-## 🌲 Parent-Child Sub-Workflow Lineage
+## 🌲 Parent-Child Sub-Workflow Lineage & Cascading Lifecycles
 
-ApexFlow supports launching **sub-workflows** from within parent workflow steps:
+ApexFlow supports launching **sub-workflows** from within parent workflow context:
 
 ```text
 [ Master Order Workflow (Run #101) ]
@@ -104,20 +105,18 @@ ApexFlow supports launching **sub-workflows** from within parent workflow steps:
 ```
 
 ### Sub-Workflow Rules:
-- **Hierarchical Tracking**: Child workflows store `parent_workflow_id`, establishing strict parent-child lineage.
-- **Dashboard Tree Telemetry**: Allows visual dashboard inspectors to render nested execution trees and trace parent-child status propagation.
+- **Hierarchical Lineage Tracking**: Child workflows store `parent_workflow_id`, establishing strict parent-child lineage.
+- **Dashboard Execution Tree**: Allows visual dashboard inspectors to render nested execution trees and trace parent-child status propagation.
 - **Modular Isolation**: Sub-workflows maintain independent retry budgets, step order sequences, and status lifecycles.
 
-### Parent-Child Sub-Workflow State Behavior Matrix:
+### Cascading Lifecycle State Behaviors:
 
-| Scenario | Fire-and-Forget Mode (Async) | Awaited Sub-Workflow Mode (Sync) |
+| Action / Event | Behavior on Parent Workflow | Behavior on Child Sub-Workflows |
 | :--- | :--- | :--- |
-| **Child Fails** | Child $\rightarrow$ `FAILED`. Parent remains `COMPLETED` (isolated). | Child $\rightarrow$ `FAILED`. Parent step catches error $\rightarrow$ Parent `FAILED`. |
-| **Child Cancelled** | Child $\rightarrow$ `CANCELLED`. Parent unaffected. | Child $\rightarrow$ `CANCELLED`. Parent step fails $\rightarrow$ Parent `FAILED`. |
-| **Child Restarted** | Child reset to `PENDING` & steps to `QUEUED`. Parent unaffected. | Child reset to `PENDING`. Parent re-awaits child result. |
-| **Parent Fails** | Parent $\rightarrow$ `FAILED`. Active child workflows continue running. | Parent $\rightarrow$ `FAILED`. Active child workflows continue running. |
-| **Parent Cancelled** | Parent $\rightarrow$ `CANCELLED`. Cascades `CANCELLED` to active child workflows. | Parent $\rightarrow$ `CANCELLED`. Cascades `CANCELLED` to active child workflows. |
-| **Parent Restarted** | Parent reset to `RUNNING`. Cascades `PENDING` reset to failed/cancelled child workflows. | Parent reset to `RUNNING`. Cascades `PENDING` reset to failed/cancelled child workflows. |
+| **Parent Cancelled** | Parent transitions to `CANCELLED`. | Automatically cascades `CANCELLED` status to all active (`PENDING`/`RUNNING`) child sub-workflows. |
+| **Parent Restarted** | Parent resets to `RUNNING` & steps reset to `QUEUED`. | Automatically cascades `PENDING` reset to failed or cancelled child sub-workflows. |
+| **Child Fails** | Child transitions to `FAILED`. | Isolated to child workflow. Parent can catch error or retry child sub-workflow. |
+| **Child Restarted** | Child resets to `RUNNING` & steps reset to `QUEUED`. | Child execution resumes independently without re-executing completed parent steps. |
 
 ---
 
@@ -130,5 +129,5 @@ ApexFlow supports launching **sub-workflows** from within parent workflow steps:
 | **Poll Step** | `POST /api/v1/steps/poll` | Acquire next queued step via row-level locking. |
 | **Report Status** | `POST /api/v1/steps/report` | Update step status (`SUCCESS` / `FAILED`). |
 | **Complete Workflow** | `POST /api/v1/workflows/{id}/complete` | Transition run to `COMPLETED`. |
-| **Cancel Run** | `POST /api/v1/workflows/{id}/cancel` | Cancel active run and pending steps. |
-| **Restart Run** | `POST /api/v1/workflows/{id}/restart` | Reset failed steps to `QUEUED` and re-activate run. |
+| **Cancel Run** | `POST /api/v1/workflows/{id}/cancel` | Cancel active run, pending steps, and child workflows. |
+| **Restart Run** | `POST /api/v1/workflows/{id}/restart` | Reset failed steps to `QUEUED` and cascade reset child workflows. |
