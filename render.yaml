@@ -1,0 +1,45 @@
+# ==============================================================================
+# Render Blueprint Specification for ApexFlow Backend Control Plane
+# ==============================================================================
+services:
+  # Control Plane Web Service
+  - type: web
+    name: apex-flow-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./apex-flow-backend
+    plan: starter
+    region: oregon
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: apexflow-db
+          property: connectionString
+      - key: STORAGE_PROVIDER
+        value: local
+      - key: BACKEND_CORS_ORIGINS
+        sync: false
+      - key: PAYLOAD_MAX_INLINE_BYTES
+        value: "262144"
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1
+
+# Managed PostgreSQL Database on Render
+databases:
+  - name: apexflow-db
+    databaseName: apexflow
+    user: apexflow_user
+    plan: starter
+    region: oregon

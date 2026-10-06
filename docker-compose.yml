@@ -1,0 +1,79 @@
+version: "3.8"
+
+services:
+  # ============================================================================
+  # PostgreSQL Database Service
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: apexflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-apexflow}
+      POSTGRES_USER: ${POSTGRES_USER:-apexflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apexflow_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-apexflow} -d ${POSTGRES_DB:-apexflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Control Plane Backend API Service (FastAPI)
+  # ============================================================================
+  backend:
+    build:
+      context: ./apex-flow-backend
+      dockerfile: Dockerfile
+    container_name: apexflow-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-apexflow}:${POSTGRES_PASSWORD:-apexflow_secret}@postgres:5432/${POSTGRES_DB:-apexflow}
+      PROJECT_NAME: "ApexFlow Control Plane"
+      DB_ECHO: "false"
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      STORAGE_LOCAL_DIR: .apexflow_storage
+      PAYLOAD_MAX_INLINE_BYTES: 262144
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-dummy_jwt_secret_for_local_testing}
+    ports:
+      - "8000:8000"
+    volumes:
+      - apexflow_storage:/app/.apexflow_storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ============================================================================
+  # Observability Dashboard Service (Next.js 14)
+  # ============================================================================
+  dashboard:
+    build:
+      context: ./apex-flow-dashboard
+      dockerfile: Dockerfile
+    container_name: apexflow-dashboard
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54321}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-dummy_anon_key}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local
+  apexflow_storage:
+    driver: local
