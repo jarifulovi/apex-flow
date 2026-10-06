@@ -74,6 +74,7 @@ export interface Workflow {
 
 export interface WorkflowDetail extends Workflow {
   steps: WorkflowStepSummary[];
+  sub_workflows?: Workflow[];
 }
 
 export function formatDurationMs(startedAt?: string | null, completedAt?: string | null): string {

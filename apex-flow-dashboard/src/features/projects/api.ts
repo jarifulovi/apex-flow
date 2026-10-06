@@ -23,3 +23,7 @@ export async function getProject(token: string, projectId: string): Promise<Proj
 export async function getProjectMetrics(token: string, projectId: string): Promise<ProjectMetrics> {
   return fetchWithAuth<ProjectMetrics>(`/api/v1/projects/${projectId}/metrics`, token);
 }
+
+export async function getProjectOverview(token: string, projectId: string): Promise<any> {
+  return fetchWithAuth<any>(`/api/v1/projects/${projectId}/overview`, token);
+}

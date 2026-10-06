@@ -24,10 +24,45 @@ export interface ActivityItem {
   errorMessage?: string | null;
 }
 
+import { getProjectOverview } from "@/features/projects/api";
+
 export async function fetchDashboardOverview(token: string, projectId?: string) {
+  if (projectId) {
+    try {
+      const overview = await getProjectOverview(token, projectId);
+      const s = overview.stats || {};
+      return {
+        stats: {
+          totalWorkflows: s.total_runs ?? 0,
+          activeSteps: s.running_runs ?? 0,
+          completedSteps: s.completed_runs ?? 0,
+          failedSteps: s.failed_runs ?? 0,
+          activeKeysCount: s.active_workers_count ?? 0,
+          activeWorkersCount: s.active_workers_count ?? 0,
+          successRatePercent: s.success_rate_percent ?? 0.0,
+          avgDurationSeconds: s.avg_duration_seconds ?? 0.0,
+        },
+        activities: (overview.activities || []).map((act: any) => ({
+          id: act.id,
+          workflowId: act.workflow_id,
+          stepName: act.step_name,
+          status: act.status,
+          timestamp: act.timestamp,
+          errorMessage: act.error_message,
+        })),
+        keys: [],
+        workers: [],
+        hasKeys: Boolean(overview.has_keys),
+        hasWorkflows: Boolean(overview.has_workflows),
+      };
+    } catch (err) {
+      console.warn("Consolidated overview fetch failed, falling back...", err);
+    }
+  }
+
   const [workflowsRes, stepsRes, keys, workers, metrics] = await Promise.all([
-    getWorkflows(token, projectId, "all", 100, 0).catch(() => ({ data: [], totalCount: 0 })),
-    getSteps(token, projectId, "all", 100, 0).catch(() => ({ data: [], totalCount: 0 })),
+    getWorkflows(token, projectId, "all", 10, 0).catch(() => ({ data: [], totalCount: 0 })),
+    getSteps(token, projectId, "all", 10, 0).catch(() => ({ data: [], totalCount: 0 })),
     getProjectKeys(token, projectId).catch(() => []),
     getWorkers(token, projectId).catch(() => []),
     projectId ? getProjectMetrics(token, projectId).catch(() => null) : Promise.resolve(null),

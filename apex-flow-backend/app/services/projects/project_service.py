@@ -6,9 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import EntityNotFoundException
 from app.models.project import Project
+from app.models.project_key import ProjectKey
+from app.models.step import WorkflowStep
 from app.models.worker import Worker
 from app.models.workflow_run import WorkflowRun
-from app.schemas.project import ProjectCreate, ProjectMetricsResponse
+from app.schemas.project import (
+    ActivityItemResponse,
+    ProjectCreate,
+    ProjectMetricsResponse,
+    ProjectOverviewResponse,
+)
 
 
 class ProjectService:
@@ -200,3 +207,51 @@ class ProjectService:
             active_workers_count=active_workers,
             avg_duration_seconds=avg_duration_seconds,
         )
+
+    @staticmethod
+    async def get_project_overview(
+        db: AsyncSession,
+        project_id: uuid.UUID,
+        owner_id: Optional[uuid.UUID] = None,
+    ) -> ProjectOverviewResponse:
+        """Fetch consolidated project telemetry, metrics, and recent activity in 1 single retrieval."""
+        stats = await ProjectService.get_project_metrics(db=db, project_id=project_id, owner_id=owner_id)
+
+        # 1. Fetch 6 most recent step activity items
+        step_query = (
+            select(WorkflowStep)
+            .join(WorkflowRun, WorkflowStep.workflow_run_id == WorkflowRun.id)
+            .where(WorkflowRun.project_id == project_id)
+            .order_by(WorkflowStep.created_at.desc())
+            .limit(6)
+        )
+        step_res = await db.execute(step_query)
+        recent_steps = list(step_res.scalars().all())
+
+        activities = [
+            ActivityItemResponse(
+                id=s.id,
+                workflow_id=str(s.workflow_run_id),
+                step_name=s.step_name,
+                status=s.status,
+                timestamp=s.updated_at or s.created_at,
+                error_message=s.error_message,
+            )
+            for s in recent_steps
+        ]
+
+        # 2. Check key existence
+        key_query = select(func.count(ProjectKey.id)).where(
+            ProjectKey.project_id == project_id,
+            ProjectKey.status == "active",
+        )
+        key_res = await db.execute(key_query)
+        keys_count = key_res.scalar() or 0
+
+        return ProjectOverviewResponse(
+            stats=stats,
+            activities=activities,
+            has_keys=keys_count > 0,
+            has_workflows=stats.total_runs > 0,
+        )
+

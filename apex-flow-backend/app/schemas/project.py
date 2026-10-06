@@ -36,3 +36,20 @@ class ProjectMetricsResponse(BaseModel):
     success_rate_percent: float = 0.0
     active_workers_count: int = 0
     avg_duration_seconds: float = 0.0
+
+
+class ActivityItemResponse(BaseModel):
+    id: uuid.UUID
+    workflow_id: str
+    step_name: str
+    status: str
+    timestamp: datetime
+    error_message: Optional[str] = None
+
+
+class ProjectOverviewResponse(BaseModel):
+    stats: ProjectMetricsResponse
+    activities: List[ActivityItemResponse] = Field(default_factory=list)
+    has_keys: bool = False
+    has_workflows: bool = False
+

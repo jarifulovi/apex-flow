@@ -51,3 +51,4 @@ class WorkflowResponse(BaseModel):
 # Detailed workflow API response including child steps
 class WorkflowDetailResponse(WorkflowResponse):
     steps: List[WorkflowStepResponse] = []
+    sub_workflows: List[WorkflowResponse] = []

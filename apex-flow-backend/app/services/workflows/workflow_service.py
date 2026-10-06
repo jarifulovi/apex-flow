@@ -170,6 +170,16 @@ class WorkflowService:
         if not workflow_run:
             raise EntityNotFoundException("WorkflowRun", workflow_run_id)
 
+        # Fetch child sub-workflows for workflow detail in 1 DB query
+        sub_query = (
+            select(WorkflowRun)
+            .where(WorkflowRun.parent_workflow_id == workflow_run_id)
+            .options(selectinload(WorkflowRun.steps))
+            .order_by(WorkflowRun.created_at.asc())
+        )
+        sub_res = await db.execute(sub_query)
+        setattr(workflow_run, "sub_workflows", list(sub_res.scalars().all()))
+
         return workflow_run
 
     @staticmethod

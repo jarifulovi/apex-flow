@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user_from_jwt
 from app.core.database import get_db
-from app.schemas.project import ProjectCreate, ProjectMetricsResponse, ProjectResponse
+from app.schemas.project import ProjectCreate, ProjectMetricsResponse, ProjectOverviewResponse, ProjectResponse
 from app.services.projects import ProjectService
 
 router = APIRouter()
@@ -57,6 +57,16 @@ async def get_project_metrics(
 ):
     """Fetch live project telemetry metrics summary."""
     return await ProjectService.get_project_metrics(db=db, project_id=project_id, owner_id=owner_id)
+
+
+@router.get("/projects/{project_id}/overview", response_model=ProjectOverviewResponse)
+async def get_project_overview(
+    project_id: uuid.UUID,
+    owner_id: uuid.UUID = Depends(get_current_user_from_jwt),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch consolidated project telemetry, metrics, and recent activity in 1 single HTTP request."""
+    return await ProjectService.get_project_overview(db=db, project_id=project_id, owner_id=owner_id)
 
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -100,10 +100,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
       setError(null);
       const data = await getWorkflowDetail(accessToken, workflowId);
       setDetail(data);
-
-      // Fetch child sub-workflows if any exist
-      const childrenRes = await getWorkflows(accessToken, undefined, "all", 20, 0, undefined, workflowId).catch(() => ({ data: [] }));
-      setChildWorkflows(childrenRes.data || []);
+      setChildWorkflows(data.sub_workflows || []);
     } catch (err: any) {
       console.error("Failed to load workflow detail:", err);
       setError(err?.message || "Failed to load workflow details");
