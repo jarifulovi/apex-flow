@@ -34,14 +34,35 @@ class ProjectService:
         db: AsyncSession,
         owner_id: uuid.UUID,
     ) -> List[Project]:
-        """List all projects belonging to an owner."""
+        """List all projects belonging to an owner. Auto-creates Default Project if none exist."""
         query = (
             select(Project)
             .where(Project.owner_id == owner_id)
             .order_by(Project.created_at.desc())
         )
         result = await db.execute(query)
-        return list(result.scalars().all())
+        projects = list(result.scalars().all())
+
+        if not projects:
+            default_proj = await ProjectService.get_or_create_default_project(db=db, owner_id=owner_id)
+            return [default_proj]
+
+        return projects
+
+    @staticmethod
+    async def delete_project(
+        db: AsyncSession,
+        project_id: uuid.UUID,
+        owner_id: uuid.UUID,
+    ) -> None:
+        """Delete a project by ID, forbidding deletion of default project."""
+        project = await ProjectService.get_project_by_id(db=db, project_id=project_id, owner_id=owner_id)
+
+        if project.name == "Default Project" or (project.metadata_ and project.metadata_.get("is_default")):
+            raise ValueError("The Default Project cannot be deleted.")
+
+        await db.delete(project)
+        await db.commit()
 
     @staticmethod
     async def get_or_create_default_project(

@@ -1,6 +1,6 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user_from_jwt
@@ -57,3 +57,18 @@ async def get_project_metrics(
 ):
     """Fetch live project telemetry metrics summary."""
     return await ProjectService.get_project_metrics(db=db, project_id=project_id, owner_id=owner_id)
+
+
+@router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project(
+    project_id: uuid.UUID,
+    owner_id: uuid.UUID = Depends(get_current_user_from_jwt),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a project by ID, preventing deletion of Default Project."""
+    try:
+        await ProjectService.delete_project(db=db, project_id=project_id, owner_id=owner_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
