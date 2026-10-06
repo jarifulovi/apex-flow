@@ -230,16 +230,6 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
               </Button>
             )}
 
-            <Link href="/dashboard/workflows">
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs gap-1.5"
-              >
-                <ArrowLeft size={13} />
-                <span>Back</span>
-              </Button>
-            </Link>
           </div>
         }
       />
