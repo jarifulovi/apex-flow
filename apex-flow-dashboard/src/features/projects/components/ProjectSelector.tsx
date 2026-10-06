@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { FolderGit2, ChevronDown, Plus, Check, Loader2 } from "lucide-react";
 import { useProject } from "../context";
 import {
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function ProjectSelector() {
+  const router = useRouter();
   const { projects, currentProject, selectProject, createNewProject, loading } = useProject();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -33,6 +35,7 @@ export function ProjectSelector() {
       setNewProjectName("");
       setModalOpen(false);
       setDropdownOpen(false);
+      router.push("/dashboard");
     } catch (err: any) {
       setError(err?.message || "Failed to create project");
     } finally {
@@ -78,6 +81,7 @@ export function ProjectSelector() {
                   onClick={() => {
                     selectProject(proj.id);
                     setDropdownOpen(false);
+                    router.push("/dashboard");
                   }}
                   className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
                     isSelected
