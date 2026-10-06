@@ -6,10 +6,14 @@ import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
-# Load environment variables from backend .env file before importing app
+# Load environment variables from backend .env and SDK .env.test files before importing app
 backend_env = Path(__file__).parent.parent.parent.parent / "apex-flow-backend" / ".env"
 if backend_env.exists():
     load_dotenv(backend_env, override=True)
+
+sdk_test_env = Path(__file__).parent.parent / ".env.test"
+if sdk_test_env.exists():
+    load_dotenv(sdk_test_env, override=True)
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -123,3 +127,23 @@ async def test_project_key(db: AsyncSession, test_project: Any, test_user_id: uu
         payload=ProjectKeyCreate(name="Test Key", project_id=test_project.id),
     )
     yield created_key.raw_key
+
+
+@pytest_asyncio.fixture
+async def test_client_harness(test_project_key: str):
+    """
+    Yields a pre-configured ApexFlowClient wired to the test FastAPI app via ASGITransport.
+    Automatically closes the client after test function completes.
+    """
+    from httpx import ASGITransport, AsyncClient
+    from apex_flow_sdk import ApexFlowClient
+
+    base_url = os.getenv("APEXFLOW_BASE_URL", "http://test").rstrip("/")
+    client = ApexFlowClient(base_url=base_url, project_key=test_project_key)
+    client.http_client = AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url=base_url,
+        headers={"X-ApexFlow-Project-Key": test_project_key},
+    )
+    yield client
+    await client.close()

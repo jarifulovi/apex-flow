@@ -280,7 +280,6 @@ class ApexFlowClient:
 
         finally:
             print(f"👋 Worker '{self.worker_name}' stopped cleanly.")
-            await self.http_client.aclose()
 
     async def close(self):
         """Close the underlying HTTP client."""

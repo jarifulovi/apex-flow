@@ -21,7 +21,10 @@ class StorageResolver:
         """Recursively resolve $apexflow_ref descriptors back into native dicts, lists, strings, or bytes."""
         if cls.is_ref(payload):
             storage_key = payload["key"]
-            res = await http_client.get(f"{base_url}/api/v1/storage/download/{storage_key}")
+            endpoint = f"/api/v1/storage/download/{storage_key}"
+            target_url = endpoint if (http_client.base_url and str(http_client.base_url) != "") else f"{base_url.rstrip('/')}{endpoint}"
+
+            res = await http_client.get(target_url)
             res.raise_for_status()
             
             content_type = payload.get("content_type", "")
@@ -64,7 +67,10 @@ class StorageResolver:
             return payload, False
 
         files = {"file": (filename, data_bytes, content_type)}
-        res = await http_client.post(f"{base_url}/api/v1/storage/upload", files=files)
+        endpoint = "/api/v1/storage/upload"
+        target_url = endpoint if (http_client.base_url and str(http_client.base_url) != "") else f"{base_url.rstrip('/')}{endpoint}"
+
+        res = await http_client.post(target_url, files=files)
         res.raise_for_status()
         ref = res.json()
         return ref, True

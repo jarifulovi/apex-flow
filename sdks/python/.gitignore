@@ -8,3 +8,5 @@ __pycache__/
 # ApexFlow Durable Storage
 .apexflow_storage/
 *.log
+
+.env.test

@@ -106,13 +106,26 @@ class WorkflowContext:
         last_exception: Optional[Exception] = None
         attempt = 0
 
+        import inspect
+        sig = inspect.signature(fn)
+        has_params = len(sig.parameters) > 0
+
         while attempt <= retries:
             attempt += 1
             try:
-                if asyncio.iscoroutinefunction(fn):
-                    output = await fn()
+                if has_params and input_payload is not None:
+                    resolved_input = await StorageResolver.resolve_payload(
+                        self.client.http_client, self.client.base_url, input_payload
+                    )
+                    if asyncio.iscoroutinefunction(fn):
+                        output = await fn(resolved_input)
+                    else:
+                        output = fn(resolved_input)
                 else:
-                    output = fn()
+                    if asyncio.iscoroutinefunction(fn):
+                        output = await fn()
+                    else:
+                        output = fn()
 
                 # Report success to control plane
                 output_data = {}
