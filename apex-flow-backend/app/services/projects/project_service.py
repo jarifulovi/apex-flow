@@ -162,7 +162,7 @@ class ProjectService:
         elif total_runs > 0:
             success_rate = round((completed_runs / total_runs) * 100, 1)
         else:
-            success_rate = 100.0
+            success_rate = 0.0
 
         # 3. Active workers count (last seen within 5 minutes)
         worker_query = select(func.count(Worker.id)).where(

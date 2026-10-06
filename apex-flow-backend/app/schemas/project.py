@@ -33,6 +33,6 @@ class ProjectMetricsResponse(BaseModel):
     failed_runs: int = 0
     running_runs: int = 0
     cancelled_runs: int = 0
-    success_rate_percent: float = 100.0
+    success_rate_percent: float = 0.0
     active_workers_count: int = 0
     avg_duration_seconds: float = 0.0
