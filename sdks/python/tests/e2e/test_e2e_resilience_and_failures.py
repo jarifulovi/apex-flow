@@ -261,3 +261,115 @@ async def test_simulated_slow_execution_pipeline(test_client_harness: ApexFlowCl
     wf_res = await client.http_client.get(f"/api/v1/workflows/{run_id}")
     ApexFlowAssert.assert_workflow_run(wf_res.json(), status="completed")
 
+
+@pytest.mark.asyncio
+async def test_parent_cancellation_cascades_to_child_workflows(test_client_harness: ApexFlowClient):
+    """
+    Test that cancelling a parent workflow run automatically cascades cancellation to all active child sub-workflows.
+    """
+    client = test_client_harness
+
+    parent_id = await client.trigger_workflow("parent-workflow-cancel")
+    child1_id = await client.trigger_workflow("child-workflow-1", parent_workflow_id=parent_id)
+    child2_id = await client.trigger_workflow("child-workflow-2", parent_workflow_id=parent_id)
+
+    # Cancel parent workflow
+    cancel_res = await client.http_client.post(f"/api/v1/workflows/{parent_id}/cancel")
+    assert cancel_res.status_code == 200
+
+    # Verify parent workflow run is cancelled
+    parent_res = await client.http_client.get(f"/api/v1/workflows/{parent_id}")
+    ApexFlowAssert.assert_workflow_run(parent_res.json(), status="cancelled")
+
+    # Verify child 1 is automatically cancelled
+    child1_res = await client.http_client.get(f"/api/v1/workflows/{child1_id}")
+    ApexFlowAssert.assert_workflow_run(child1_res.json(), status="cancelled", parent_workflow_id=str(parent_id))
+
+    # Verify child 2 is automatically cancelled
+    child2_res = await client.http_client.get(f"/api/v1/workflows/{child2_id}")
+    ApexFlowAssert.assert_workflow_run(child2_res.json(), status="cancelled", parent_workflow_id=str(parent_id))
+
+
+@pytest.mark.asyncio
+async def test_parent_restart_cascades_to_child_workflows(test_client_harness: ApexFlowClient):
+    """
+    Test that restarting a parent workflow run automatically cascades reset to cancelled/failed child sub-workflows.
+    """
+    client = test_client_harness
+
+    parent_id = await client.trigger_workflow("parent-workflow-restart")
+    child_id = await client.trigger_workflow("child-workflow-restart", parent_workflow_id=parent_id)
+
+    # Cancel parent (which cascades cancel to child)
+    await client.http_client.post(f"/api/v1/workflows/{parent_id}/cancel")
+
+    child_cancel_res = await client.http_client.get(f"/api/v1/workflows/{child_id}")
+    ApexFlowAssert.assert_workflow_run(child_cancel_res.json(), status="cancelled")
+
+    # Restart parent workflow
+    restart_res = await client.http_client.post(f"/api/v1/workflows/{parent_id}/restart")
+    assert restart_res.status_code == 200
+
+    # Verify parent workflow is running
+    parent_restart_res = await client.http_client.get(f"/api/v1/workflows/{parent_id}")
+    ApexFlowAssert.assert_workflow_run(parent_restart_res.json(), status="running")
+
+    # Verify child workflow is reset to pending
+    child_restart_res = await client.http_client.get(f"/api/v1/workflows/{child_id}")
+    ApexFlowAssert.assert_workflow_run(child_restart_res.json(), status="pending", parent_workflow_id=str(parent_id))
+
+
+@pytest.mark.asyncio
+async def test_child_workflow_failure_and_resumption(test_client_harness: ApexFlowClient):
+    """
+    Test child sub-workflow execution failure and independent restart/resumption lifecycle.
+    """
+    client = test_client_harness
+
+    parent_id = await client.trigger_workflow("parent-pipeline-with-child")
+    child_id = await client.trigger_workflow("failing-child-pipeline", parent_workflow_id=parent_id)
+
+    # Queue step in child workflow with max_attempts=1
+    step_res = await client.http_client.post(
+        "/api/v1/steps",
+        json={"workflow_id": str(child_id), "step_name": "flaky-child-step", "max_attempts": 1},
+    )
+    assert step_res.status_code in (200, 201)
+    step_id = step_res.json()["id"]
+
+    # Report permanent failure on child step
+    await client.http_client.post(
+        "/api/v1/steps/report",
+        json={"step_id": step_id, "status": "failed", "error_message": "Child API timeout", "attempt_count": 1},
+    )
+
+    # Verify child workflow is failed
+    child_res = await client.http_client.get(f"/api/v1/workflows/{child_id}")
+    ApexFlowAssert.assert_workflow_run(child_res.json(), status="failed")
+
+    # Restart child workflow directly
+    restart_child = await client.http_client.post(f"/api/v1/workflows/{child_id}/restart")
+    assert restart_child.status_code == 200
+
+    # Verify child workflow status reset to running and step to queued (attempt_count=0)
+    child_restarted = restart_child.json()
+    ApexFlowAssert.assert_workflow_run(child_restarted, status="running")
+    child_step_restarted = [s for s in child_restarted["steps"] if s["step_name"] == "flaky-child-step"][0]
+    ApexFlowAssert.assert_step(child_step_restarted, status="queued", attempt_count=0)
+
+    # Complete child step successfully
+    await client.http_client.post(
+        "/api/v1/steps/report",
+        json={"step_id": step_id, "status": "success", "attempt_count": 1, "output_payload": {"status": "recovered"}},
+    )
+    await client.complete_workflow(child_id)
+    await client.complete_workflow(parent_id)
+
+    # Verify both child and parent completed
+    final_child = await client.http_client.get(f"/api/v1/workflows/{child_id}")
+    ApexFlowAssert.assert_workflow_run(final_child.json(), status="completed")
+
+    final_parent = await client.http_client.get(f"/api/v1/workflows/{parent_id}")
+    ApexFlowAssert.assert_workflow_run(final_parent.json(), status="completed")
+
+

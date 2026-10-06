@@ -188,19 +188,12 @@ class WorkflowService:
         workflow_run.status = "cancelled"
         workflow_run.completed_at = now
 
-        # Update child pending steps
-        await db.execute(
-            update(WorkflowStep)
-            .where(
-                WorkflowStep.workflow_run_id == workflow_run_id,
-                WorkflowStep.status.in_(["queued", "running"]),
-            )
-            .values(
-                status="cancelled",
-                locked_until=None,
-                completed_at=now,
-            )
-        )
+        # Update loaded steps for this workflow run
+        for step in workflow_run.steps:
+            if step.status in ("queued", "running"):
+                step.status = "cancelled"
+                step.locked_until = None
+                step.completed_at = now
 
         # Cascade cancel to child sub-workflows
         await db.execute(
@@ -210,6 +203,7 @@ class WorkflowService:
                 WorkflowRun.status.in_(["pending", "running"]),
             )
             .values(status="cancelled", completed_at=now)
+            .execution_options(synchronize_session=False)
         )
 
         await db.commit()
@@ -233,21 +227,14 @@ class WorkflowService:
         workflow_run.completed_at = None
         workflow_run.started_at = now
 
-        # Reset failed/cancelled child steps to queued
-        await db.execute(
-            update(WorkflowStep)
-            .where(
-                WorkflowStep.workflow_run_id == workflow_run_id,
-                WorkflowStep.status.in_(["failed", "cancelled"]),
-            )
-            .values(
-                status="queued",
-                attempt_count=0,
-                error_message=None,
-                locked_until=None,
-                completed_at=None,
-            )
-        )
+        # Reset failed/cancelled steps to queued
+        for step in workflow_run.steps:
+            if step.status in ("failed", "cancelled"):
+                step.status = "queued"
+                step.attempt_count = 0
+                step.error_message = None
+                step.locked_until = None
+                step.completed_at = None
 
         # Cascade reset to child sub-workflows if failed or cancelled
         await db.execute(
@@ -257,6 +244,7 @@ class WorkflowService:
                 WorkflowRun.status.in_(["failed", "cancelled"]),
             )
             .values(status="pending", completed_at=None)
+            .execution_options(synchronize_session=False)
         )
 
         await db.commit()
