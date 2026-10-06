@@ -72,19 +72,21 @@ The SDK is **not merely a thin HTTP wrapper** for the control plane. It encapsul
 - Completes currently executing in-flight step functions, notifies the control plane, and deregisters worker heartbeats before terminating process execution cleanly.
 
 ### 9. Transparent Large Payload Offloading & Pointer Resolution (`$apexflow_ref`)
-- Small JSON payloads ($\le 250\text{ KB}$) are transmitted directly to control plane API endpoints in inline JSON format.
-- Large JSON dictionaries or binary file payloads ($> 250\text{ KB}$) are transparently offloaded by the SDK (`StorageResolver`) via `POST /api/v1/storage/upload` before step registration or status reporting.
-- The SDK replaces large payloads with a lightweight `$apexflow_ref` pointer descriptor:
+- **Inline Payloads ($\le 250\text{ KB}$)**: Transmitted directly to control plane API endpoints in inline JSON format.
+- **Offloaded Payloads ($> 250\text{ KB}$ up to $2\text{ MB}$)**: Transparently offloaded by the SDK (`StorageResolver`) via `POST /api/v1/storage/upload` before step registration or status reporting.
+- **Pointer Descriptor (`$apexflow_ref`)**: The SDK replaces offloaded payloads with a lightweight `$apexflow_ref` pointer descriptor:
   ```json
   {
     "$apexflow_ref": true,
     "key": "payloads/20261005_abcdef123.json",
     "size_bytes": 1048576,
     "content_type": "application/json",
-    "provider": "local"
+    "provider": "s3"
   }
   ```
-- When acquiring steps or loading step checkpoints, the SDK transparently dereferences `$apexflow_ref` pointers back into native dictionaries or bytes via `GET /api/v1/storage/download/{key}`, ensuring developer step code never needs explicit S3 API logic.
+- **Dereferencing**: When acquiring steps or loading step checkpoints, the SDK transparently dereferences `$apexflow_ref` pointers back into native dictionaries or bytes via `GET /api/v1/storage/download/{key}`, ensuring developer step code never needs explicit S3 API logic.
+- **Pass-by-Reference ($> 2\text{ MB}$)**: Raw binary payloads exceeding $2\text{ MB}$ are rejected by the control plane with `HTTP 413 Payload Too Large`. For datasets or files $>2\text{ MB}$, workers upload data directly to their S3 bucket and pass reference URIs (`s3://...`) into step arguments.
+
 
 ---
 

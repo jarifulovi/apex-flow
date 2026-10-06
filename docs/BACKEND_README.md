@@ -50,7 +50,7 @@ The backend follows **Hexagonal Architecture (Ports & Adapters)** to decouple co
     │   Infrastructure Adapters Layer  │   │  Async SQLAlchemy ORM     │
     │    (`app/adapters/storage/`)     │   │   & PostgreSQL Database   │
     │  - LocalStorage (Atomic Disk)    │   │  (WorkflowRuns, Steps)    │
-    │  - S3Storage (AWS / MinIO / R2)  │   │                           │
+    │  - S3Storage (Supabase/S3/R2)    │   │                           │
     │  - PayloadPolicyManager (250KB)  │   │                           │
     └──────────────────────────────────┘   └───────────────────────────┘
 ```
@@ -60,9 +60,9 @@ The backend follows **Hexagonal Architecture (Ports & Adapters)** to decouple co
 - **Adapters Layer (`app/adapters/`)**: Implements infrastructure contracts ("Ports") to connect external systems to the control plane.
   - **Implemented Adapters**:
     - `adapters/storage/base.py`: `BaseStorageAdapter` interface (`save`, `get`, `exists`, `delete`).
-    - `adapters/storage/local_adapter.py`: `LocalStorageAdapter` with atomic disk writes (`write` + `os.fsync` + `os.replace`).
-    - `adapters/storage/s3_adapter.py`: `S3StorageAdapter` supporting AWS S3, MinIO, Cloudflare R2, and DigitalOcean Spaces.
-    - `adapters/storage/policy.py`: `PayloadPolicyManager` enforcing size thresholds and `$apexflow_ref` creation.
+    - `adapters/storage/local_adapter.py`: `LocalStorageAdapter` with atomic disk writes (`write` + `os.fsync` + `os.replace`), path traversal protection, and 2MB single payload ceiling enforcement.
+    - `adapters/storage/s3_adapter.py`: `S3StorageAdapter` supporting Supabase S3, AWS S3, MinIO, and Cloudflare R2 via `boto3`.
+    - `adapters/storage/policy.py`: `PayloadPolicyManager` enforcing 250KB inline offload threshold and `$apexflow_ref` creation.
 
 ---
 
@@ -85,21 +85,22 @@ The backend provides automatic sub-tree lifecycle management for hierarchical wo
 - **Parent Restart Cascade**: Restarting a parent workflow run (`restart_workflow_run`) automatically resets failed or cancelled child sub-workflows back to `pending`.
 - **In-Memory ORM Synchronization**: Updates both in-memory model instances and database rows during lifecycle mutations to ensure consistent API responses.
 
-### 4. Large Payload Offloading & 250KB Threshold Policy
+### 4. Large Payload Offloading & Storage Architecture
 To maintain database performance and prevent `jsonb` table bloat:
 - **Small Payloads ($\le 250\text{ KB}$)**: Stored inline directly in PostgreSQL `jsonb`.
-- **Large Payloads / Files ($> 250\text{ KB}$)**: Automatically offloaded to object storage (S3/MinIO) or a durable local volume directory (`.apexflow_storage/payloads/`).
-- **DB Reference Descriptor (`$apexflow_ref`)**: Large payloads in `jsonb` are replaced with a canonical pointer descriptor:
+- **Offloaded Payloads ($> 250\text{ KB}$ up to $2\text{ MB}$)**: Offloaded to object storage (Supabase S3 / AWS S3 / R2) or local storage directory (`.apexflow_storage/`).
+- **DB Reference Descriptor (`$apexflow_ref`)**: Offloaded payloads in `jsonb` are replaced with a canonical pointer descriptor:
   ```json
   {
     "$apexflow_ref": true,
     "key": "payloads/20261005_abcdef123.json",
     "size_bytes": 1048576,
     "content_type": "application/json",
-    "provider": "local",
+    "provider": "s3",
     "created_at": "2026-10-05T19:00:00Z"
   }
   ```
+- **Pass-by-Reference ($> 2\text{ MB}$)**: Payloads exceeding the 2MB control-plane ceiling are rejected with `HTTP 413 Payload Too Large`. Users pass S3 URIs (`s3://...`) directly in step parameters to avoid control plane bandwidth and memory overhead.
 
 ### 5. Fast $O(1)$ Step Status Reporting & Explicit SDK Completion
 - Step execution reporting (`POST /api/v1/steps/report`) performs fast $O(1)$ status writes without expensive database subqueries or status guessing.
@@ -109,10 +110,11 @@ To maintain database performance and prevent `jsonb` table bloat:
 - Supports optional `deduplication_id` on workflow creation (`POST /api/v1/workflows`).
 - Enforces database-level idempotency via a filtered unique index (`idx_workflow_runs_dedup`), returning active workflow runs immediately if a duplicate trigger request is received.
 
-### 7. Dual Storage Retention & Pruning Strategy (`pg-cron`)
-To prevent database storage bloating on Supabase free-tier PostgreSQL databases:
+### 7. Database Retention Strategy (`pg-cron`)
+To prevent database storage bloating on PostgreSQL databases:
 - **Soft Payload Pruning** (`prune_old_payloads`): Daily at 02:00 AM UTC, clears JSON payloads (`{}`) for completed runs older than 7 days, reducing disk usage by 90%+ while preserving run telemetry metrics for 30 days.
 - **Hard Batched Delete** (`prune_old_workflow_runs_batched`): Daily at 03:00 AM UTC, deletes terminal runs older than 30 days in non-blocking batches of 2,000 rows.
+- Cloud Object Storage lifecycle retention (auto-deleting expired objects) is managed natively via S3 bucket lifecycle rules.
 
 ---
 
@@ -122,13 +124,14 @@ Storage settings are configured in `app/core/config.py` via environment variable
 
 | Variable | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `PAYLOAD_MAX_INLINE_BYTES` | `int` | `262144` (250 KB) | Threshold size in bytes before offloading payload. |
+| `PAYLOAD_MAX_INLINE_BYTES` | `int` | `256000` (250 KB) | Threshold size in bytes before offloading payload. |
+| `PAYLOAD_MAX_SINGLE_BYTES` | `int` | `2097152` (2 MB) | Maximum single payload size ceiling allowed by control plane API. |
 | `STORAGE_PROVIDER` | `str` | `"local"` | Storage provider: `"local"` or `"s3"`. |
 | `STORAGE_LOCAL_DIR` | `str` | `".apexflow_storage"` | Directory path for local volume storage fallback. |
-| `S3_BUCKET_NAME` | `str` | `None` | Target S3/MinIO bucket name. |
-| `S3_ENDPOINT_URL` | `str` | `None` | Endpoint URL for MinIO, Cloudflare R2, or custom S3 compatible APIs. |
-| `AWS_ACCESS_KEY_ID` | `str` | `None` | AWS / MinIO Access Key ID. |
-| `AWS_SECRET_ACCESS_KEY` | `str` | `None` | AWS / MinIO Secret Access Key. |
+| `S3_BUCKET_NAME` | `str` | `None` | Target S3 / Supabase bucket name. |
+| `S3_ENDPOINT_URL` | `str` | `None` | Endpoint URL for Supabase S3, MinIO, or Cloudflare R2. |
+| `AWS_ACCESS_KEY_ID` | `str` | `None` | S3 / Supabase Access Key ID. |
+| `AWS_SECRET_ACCESS_KEY` | `str` | `None` | S3 / Supabase Secret Access Key. |
 | `AWS_REGION` | `str` | `"us-east-1"` | AWS Region name. |
 
 ---

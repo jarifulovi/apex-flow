@@ -61,10 +61,11 @@ ApexFlow is architected with clear decoupling between the **Zero-Knowledge Backe
    | `PROJECT_NAME` | `ApexFlow Control Plane` | Display name for API docs. |
    | `BACKEND_CORS_ORIGINS` | `https://<your-vercel-dashboard-app>.vercel.app` | Allowed CORS origins for dashboard cross-origin calls. |
    | `STORAGE_PROVIDER` | `local` (or `s3`) | Storage adapter provider. |
-   | `PAYLOAD_MAX_INLINE_BYTES` | `262144` | 250KB offload threshold. |
+   | `PAYLOAD_MAX_INLINE_BYTES` | `256000` | 250KB offload threshold. |
+   | `PAYLOAD_MAX_SINGLE_BYTES` | `2097152` | 2MB single payload limit ceiling. |
    | `SUPABASE_JWT_SECRET` | `<your-supabase-jwt-secret>` | Secret key for verifying dashboard Bearer tokens. |
-   | `S3_BUCKET_NAME` | `<your-s3-bucket-name>` | *(Optional)* Target S3/R2 bucket name. |
-   | `S3_ENDPOINT_URL` | `<your-r2-endpoint-url>` | *(Optional)* Endpoint URL for R2/MinIO. |
+   | `S3_BUCKET_NAME` | `<your-s3-bucket-name>` | *(Optional)* Target S3/Supabase/R2 bucket name. |
+   | `S3_ENDPOINT_URL` | `<your-endpoint-url>` | *(Optional)* Endpoint URL for Supabase/R2/MinIO. |
    | `AWS_ACCESS_KEY_ID` | `<access-key-id>` | *(Optional)* Cloud storage access key ID. |
    | `AWS_SECRET_ACCESS_KEY` | `<secret-key>` | *(Optional)* Cloud storage secret access key. |
 
