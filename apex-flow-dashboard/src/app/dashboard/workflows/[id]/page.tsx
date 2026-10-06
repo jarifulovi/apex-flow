@@ -192,6 +192,17 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
         subtitle={`Workflow Run ID: ${detail.id}`}
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              onClick={loadDetail}
+              disabled={loading || actionLoading}
+              variant="outline"
+              size="sm"
+              className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] hover:bg-[#232332] text-xs gap-1.5"
+            >
+              <RotateCcw size={13} className={`text-violet-400 ${loading ? "animate-spin" : ""}`} />
+              <span>Refresh</span>
+            </Button>
+
             {canCancel && (
               <Button
                 onClick={handleCancel}

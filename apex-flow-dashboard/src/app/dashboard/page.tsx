@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Header } from "@/components/shared/Header";
-import { TrendingUp, Activity, Loader2 } from "lucide-react";
+import { TrendingUp, Activity, Loader2, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/features/auth/hooks";
 import { useProject } from "@/features/projects/context";
 import {
@@ -62,6 +63,17 @@ export default function DashboardPage() {
       <Header
         title="Overview"
         subtitle={`Telemetry & control plane monitoring for ${currentProject?.name || "your project"}`}
+        actions={
+          <Button
+            onClick={loadDashboard}
+            disabled={loading}
+            variant="outline"
+            className="bg-[#1b1b26] hover:bg-[#232332] text-zinc-300 border-white/10 hover:border-violet-500/40 text-xs h-8 px-2.5 flex items-center gap-1.5"
+          >
+            <RotateCcw size={13} className={`text-violet-400 ${loading ? "animate-spin" : ""}`} />
+            <span>Refresh</span>
+          </Button>
+        }
       />
 
       {loading ? (

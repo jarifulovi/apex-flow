@@ -20,47 +20,43 @@ function CopyButton({ text }: { text: string }) {
 export function SDKQuickstart() {
   const [activeTab, setActiveTab] = useState<"python" | "curl" | "node">("python");
 
-  const pythonCode = `import requests
+  const pythonCode = `# Install: pip install git+https://github.com/jarifulovi/apex-flow.git#subdirectory=sdks/python
+import asyncio
+from apex_flow_sdk import ApexFlowClient, WorkflowContext
 
-API_URL = "http://localhost:8000/api/v1"
-PROJECT_KEY = "af_live_your_secret_key_here"
-
-headers = {
-    "X-ApexFlow-Project-Key": PROJECT_KEY,
-    "Content-Type": "application/json",
-}
-
-# 1. Create a Workflow Run
-response = requests.post(
-    f"{API_URL}/workflows",
-    headers=headers,
-    json={"name": "data_indexing_job"}
+client = ApexFlowClient(
+    base_url="https://apex-flow-backend-kt5d.onrender.com",
+    project_key="af_live_your_secret_key_here",
+    worker_name="python-worker-1"
 )
-workflow = response.json()
-print("Workflow initialized:", workflow["id"])
 
-# 2. Queue a Step
-requests.post(
-    f"{API_URL}/steps",
-    headers=headers,
-    json={
-        "workflow_id": workflow["id"],
-        "step_name": "fetch_data",
-        "input_payload": {"batch_size": 100}
-    }
-)`;
+@client.workflow(name="data-indexing-job")
+async def data_indexing_workflow(ctx: WorkflowContext, payload: dict):
+    res = await ctx.step("fetch-data", lambda: {"batch_size": 100, "status": "ok"})
+    return {"processed": True, "data": res}
+
+async def main():
+    run_id = await client.trigger_workflow("data-indexing-job")
+    print("Workflow Run Queued:", run_id)
+    ctx = WorkflowContext(workflow_run_id=run_id, client=client)
+    result = await data_indexing_workflow(ctx, {})
+    print("Execution Result:", result)
+    await client.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())`;
 
   const curlCode = `# 1. Initialize a workflow run
-curl -X POST http://localhost:8000/api/v1/workflows \\
+curl -X POST https://apex-flow-backend-kt5d.onrender.com/api/v1/workflows \\
   -H "X-ApexFlow-Project-Key: af_live_your_secret_key_here" \\
   -H "Content-Type: application/json" \\
-  -d '{"name": "nightly_sync_job"}'
+  -d '{"workflow_name": "nightly_sync_job"}'
 
 # 2. Poll the next queued step (FOR UPDATE SKIP LOCKED queue)
-curl -X POST http://localhost:8000/api/v1/steps/poll \\
+curl -X POST https://apex-flow-backend-kt5d.onrender.com/api/v1/steps/poll \\
   -H "X-ApexFlow-Project-Key: af_live_your_secret_key_here"`;
 
-  const nodeCode = `const API_URL = "http://localhost:8000/api/v1";
+  const nodeCode = `const API_URL = "https://apex-flow-backend-kt5d.onrender.com/api/v1";
 const PROJECT_KEY = "af_live_your_secret_key_here";
 
 async function runWorkflow() {
@@ -70,7 +66,7 @@ async function runWorkflow() {
       "X-ApexFlow-Project-Key": PROJECT_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ name: "export_user_data" }),
+    body: JSON.stringify({ workflow_name: "export_user_data" }),
   });
   const workflow = await res.json();
   console.log("Workflow Run:", workflow.id);

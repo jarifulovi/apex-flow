@@ -59,29 +59,29 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
             aria-label="Notifications"
           >
             <Bell size={15} />
-            <span className="dashboard-header-badge">{alerts.length}</span>
+            <span className="dashboard-header-badge">!</span>
           </button>
 
           {openNotifs && (
             <div className="absolute right-0 mt-2 w-80 bg-[#161620] border border-white/10 rounded-xl shadow-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2">
               <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
-                <h4 className="text-xs font-bold text-[#ececee] tracking-wide uppercase">System Alerts</h4>
+                <h4 className="text-xs font-bold text-[#ececee] tracking-wide uppercase">System Notifications</h4>
                 <button onClick={() => setOpenNotifs(false)} className="text-zinc-400 hover:text-white">
                   <X size={14} />
                 </button>
               </div>
 
               <div className="flex flex-col gap-2.5">
-                {alerts.map(({ id, title: aTitle, desc, time, icon: Icon, color }) => (
-                  <div key={id} className="flex items-start gap-2.5 p-2 rounded-lg bg-white/5 border border-white/5">
-                    <Icon size={16} className={`${color} shrink-0 mt-0.5`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-zinc-200">{aTitle}</p>
-                      <p className="text-[11px] text-zinc-400 leading-tight">{desc}</p>
-                      <span className="text-[10px] text-zinc-500 mt-1 block">{time}</span>
-                    </div>
-                  </div>
-                ))}
+                <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 text-center">
+                  <Bell size={20} className="mx-auto text-violet-400 mb-1.5 opacity-70" />
+                  <p className="text-xs font-semibold text-zinc-200">Notifications Unavailable</p>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed mt-1">
+                    Live WebSocket & push notification dispatch is currently unavailable in this environment.
+                  </p>
+                  <span className="text-[10px] text-violet-300 font-mono mt-2 block bg-violet-950/60 py-1 px-2 rounded border border-violet-500/30">
+                    Status: System Operational (Polling Active)
+                  </span>
+                </div>
               </div>
             </div>
           )}
