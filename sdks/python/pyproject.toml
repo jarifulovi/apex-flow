@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Python SDK for ApexFlow Lightweight Workflow Orchestration Engine"
 readme = "README.md"
 requires-python = ">=3.8"
-license = { text = "MIT" }
+license = "MIT"
 keywords = ["workflow", "orchestration", "durable-execution", "ai-agents", "apex-flow"]
 authors = [
     { name = "ApexFlow Team" }
