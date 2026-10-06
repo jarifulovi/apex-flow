@@ -10,3 +10,8 @@ __pycache__/
 *.log
 
 .env.test
+
+# Python packaging & build artifacts
+*.egg-info/
+build/
+dist/
