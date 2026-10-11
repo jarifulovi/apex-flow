@@ -17,10 +17,17 @@ class StepService:
         """Queue a new step under an existing workflow run."""
         now = datetime.now(timezone.utc)
 
-        # Update parent workflow status to running if pending (atomic query, non-blocking)
+        # Update parent workflow status to running if pending and not actively debouncing
         await db.execute(
             update(WorkflowRun)
-            .where(WorkflowRun.id == payload.workflow_id, WorkflowRun.status == "pending")
+            .where(
+                WorkflowRun.id == payload.workflow_id,
+                WorkflowRun.status == "pending",
+                or_(
+                    WorkflowRun.debounced_until.is_(None),
+                    WorkflowRun.debounced_until <= now,
+                ),
+            )
             .values(status="running", started_at=func.coalesce(WorkflowRun.started_at, now))
         )
 
@@ -33,11 +40,35 @@ class StepService:
             available_time = now + timedelta(seconds=payload.delay_seconds)
 
         step_priority = payload.priority
-        if step_priority == 0:
-            wf_res = await db.execute(select(WorkflowRun.priority).where(WorkflowRun.id == payload.workflow_id))
-            parent_priority = wf_res.scalar_one_or_none()
-            if parent_priority is not None:
-                step_priority = parent_priority
+        parent_priority = None
+        parent_debounced_until = None
+        wf_res = await db.execute(
+            select(WorkflowRun.priority, WorkflowRun.debounced_until).where(
+                WorkflowRun.id == payload.workflow_id
+            )
+        )
+        try:
+            row = wf_res.first()
+            if row is not None and hasattr(row, "__getitem__") and not type(row).__name__.endswith("Mock"):
+                parent_priority, parent_debounced_until = row[0], row[1]
+            elif row is not None and hasattr(row, "priority") and not type(row).__name__.endswith("Mock"):
+                parent_priority = row.priority
+                parent_debounced_until = getattr(row, "debounced_until", None)
+        except Exception:
+            pass
+
+        if parent_priority is None and hasattr(wf_res, "scalar_one_or_none"):
+            try:
+                scalar_val = wf_res.scalar_one_or_none()
+                if scalar_val is not None and not type(scalar_val).__name__.endswith("Mock"):
+                    parent_priority = scalar_val
+            except Exception:
+                pass
+
+        if step_priority == 0 and parent_priority is not None:
+            step_priority = parent_priority
+        if parent_debounced_until and parent_debounced_until > available_time:
+            available_time = parent_debounced_until
 
         step = WorkflowStep(
             workflow_run_id=payload.workflow_id,

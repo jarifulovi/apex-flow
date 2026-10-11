@@ -119,10 +119,13 @@ class ApexFlowClient:
         parent_workflow_id: Optional[Union[str, uuid.UUID]] = None,
         timeout_seconds: Optional[int] = None,
         priority: int = 0,
+        debounce_seconds: Optional[int] = None,
+        max_debounce_seconds: Optional[int] = None,
     ) -> uuid.UUID:
         """
         Trigger a new workflow execution run on the ApexFlow control plane.
-        Supports deduplication_id for idempotency, parent_workflow_id for sub-workflows, priority for queuing, and timeout_seconds for execution limits.
+        Supports deduplication_id for idempotency, parent_workflow_id for sub-workflows,
+        priority for queuing, timeout_seconds for execution limits, and debounce_seconds for event coalescing.
         """
         raw_metadata = metadata or {}
         offloaded_meta, _ = await StorageResolver.offload_if_needed(
@@ -141,6 +144,10 @@ class ApexFlowClient:
             payload["timeout_seconds"] = timeout_seconds
         if priority != 0:
             payload["priority"] = priority
+        if debounce_seconds and debounce_seconds > 0:
+            payload["debounce_seconds"] = debounce_seconds
+        if max_debounce_seconds and max_debounce_seconds > 0:
+            payload["max_debounce_seconds"] = max_debounce_seconds
 
         res = await self._request_with_retry("POST", f"{self.base_url}/api/v1/workflows", json=payload)
         res.raise_for_status()

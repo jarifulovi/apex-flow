@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.step import WorkflowStep
@@ -149,6 +149,10 @@ class QueueService:
                 WorkflowRun.project_id == project_id,
                 WorkflowStep.status == "queued",
                 WorkflowStep.available_at <= now,
+                or_(
+                    WorkflowRun.debounced_until.is_(None),
+                    WorkflowRun.debounced_until <= now,
+                ),
             )
         )
 

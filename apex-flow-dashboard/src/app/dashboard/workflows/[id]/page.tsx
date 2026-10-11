@@ -317,6 +317,24 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
+        {/* Active Debounce Window Banner */}
+        {detail.debounced_until && new Date(detail.debounced_until).getTime() > Date.now() && (
+          <div className="bg-blue-950/20 border border-blue-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 text-blue-300">
+              <Clock size={16} className="text-blue-400 shrink-0" />
+              <span>
+                Active Debounce Window ({detail.debounce_seconds}s): Event bursts are being coalesced. Execution released at{" "}
+                <code className="font-mono text-blue-200 font-semibold">
+                  {new Date(detail.debounced_until).toLocaleTimeString()}
+                </code>
+              </span>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-mono">
+              Debouncing
+            </span>
+          </div>
+        )}
+
         {/* Ancestor Fork Lineage */}
         {detail.forked_from_id && (
           <div className="bg-amber-950/20 border border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">

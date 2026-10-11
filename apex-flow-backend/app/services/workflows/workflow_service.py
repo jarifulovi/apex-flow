@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
-from sqlalchemy import String, cast, func, or_, select, update
+from sqlalchemy import and_, cast, func, or_, select, String, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -31,6 +31,66 @@ class WorkflowService:
             )
             target_project_id = default_project.id
 
+        now = datetime.now(timezone.utc)
+
+        # 1. Check for active debouncing run to coalesce
+        if payload.debounce_seconds and payload.debounce_seconds > 0:
+            if payload.deduplication_id:
+                debounce_filter = and_(
+                    WorkflowRun.project_id == target_project_id,
+                    WorkflowRun.deduplication_id == payload.deduplication_id,
+                    WorkflowRun.status == "pending",
+                    WorkflowRun.debounced_until.is_not(None),
+                    WorkflowRun.debounced_until > now,
+                )
+            else:
+                debounce_filter = and_(
+                    WorkflowRun.project_id == target_project_id,
+                    WorkflowRun.workflow_name == payload.workflow_name,
+                    WorkflowRun.deduplication_id.is_(None),
+                    WorkflowRun.status == "pending",
+                    WorkflowRun.debounced_until.is_not(None),
+                    WorkflowRun.debounced_until > now,
+                )
+
+            res = await db.execute(select(WorkflowRun).where(debounce_filter))
+            existing_debounced_run = res.scalar_one_or_none()
+
+            if existing_debounced_run:
+                # Extend the debounce window
+                candidate_until = now + timedelta(seconds=payload.debounce_seconds)
+                if existing_debounced_run.debounce_deadline_at:
+                    new_until = min(candidate_until, existing_debounced_run.debounce_deadline_at)
+                else:
+                    new_until = candidate_until
+
+                existing_debounced_run.debounced_until = new_until
+                existing_debounced_run.debounce_seconds = payload.debounce_seconds
+
+                # Merge and overwrite newer metadata
+                if payload.metadata:
+                    merged_meta = dict(existing_debounced_run.metadata_ or {})
+                    merged_meta.update(payload.metadata)
+                    existing_debounced_run.metadata_ = merged_meta
+
+                if payload.priority != 0:
+                    existing_debounced_run.priority = payload.priority
+
+                # Push out availability of any already queued child steps
+                await db.execute(
+                    update(WorkflowStep)
+                    .where(
+                        WorkflowStep.workflow_run_id == existing_debounced_run.id,
+                        WorkflowStep.status == "queued",
+                    )
+                    .values(available_at=new_until)
+                )
+
+                await db.commit()
+                await db.refresh(existing_debounced_run)
+                return existing_debounced_run
+
+        # 2. Standard idempotency deduplication check
         if payload.deduplication_id:
             stmt = select(WorkflowRun).where(
                 WorkflowRun.project_id == target_project_id,
@@ -42,10 +102,16 @@ class WorkflowService:
             if existing_run:
                 return existing_run
 
-        now = datetime.now(timezone.utc)
         deadline = None
         if payload.timeout_seconds and payload.timeout_seconds > 0:
             deadline = now + timedelta(seconds=payload.timeout_seconds)
+
+        debounced_until = None
+        debounce_deadline = None
+        if payload.debounce_seconds and payload.debounce_seconds > 0:
+            debounced_until = now + timedelta(seconds=payload.debounce_seconds)
+            if payload.max_debounce_seconds and payload.max_debounce_seconds > 0:
+                debounce_deadline = now + timedelta(seconds=payload.max_debounce_seconds)
 
         workflow_run = WorkflowRun(
             project_id=target_project_id,
@@ -58,6 +124,9 @@ class WorkflowService:
             priority=payload.priority,
             timeout_seconds=payload.timeout_seconds,
             deadline_at=deadline,
+            debounce_seconds=payload.debounce_seconds,
+            debounced_until=debounced_until,
+            debounce_deadline_at=debounce_deadline,
         )
         db.add(workflow_run)
         await db.commit()
@@ -267,6 +336,8 @@ class WorkflowService:
         workflow_run.completed_at = None
         workflow_run.started_at = now
         workflow_run.error_message = None
+        workflow_run.debounced_until = None
+        workflow_run.debounce_deadline_at = None
         if workflow_run.timeout_seconds and workflow_run.timeout_seconds > 0:
             workflow_run.deadline_at = now + timedelta(seconds=workflow_run.timeout_seconds)
         else:

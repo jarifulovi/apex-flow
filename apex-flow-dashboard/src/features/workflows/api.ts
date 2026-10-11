@@ -71,6 +71,9 @@ export interface Workflow {
   forked_from_id?: string | null;
   timeout_seconds?: number | null;
   deadline_at?: string | null;
+  debounce_seconds?: number | null;
+  debounced_until?: string | null;
+  debounce_deadline_at?: string | null;
   error_message?: string | null;
   started_at?: string | null;
   completed_at?: string | null;

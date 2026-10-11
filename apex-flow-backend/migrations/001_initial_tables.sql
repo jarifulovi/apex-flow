@@ -82,6 +82,9 @@ CREATE TABLE workflow_runs (
     priority INTEGER NOT NULL DEFAULT 0,
     timeout_seconds INTEGER NULL,
     deadline_at TIMESTAMPTZ NULL,
+    debounce_seconds INTEGER NULL,
+    debounced_until TIMESTAMPTZ NULL,
+    debounce_deadline_at TIMESTAMPTZ NULL,
     error_message TEXT NULL,
     started_at TIMESTAMPTZ NULL,
     completed_at TIMESTAMPTZ NULL,
@@ -92,6 +95,7 @@ CREATE TABLE workflow_runs (
 CREATE INDEX idx_workflow_runs_project ON workflow_runs (project_id, created_at DESC);
 CREATE INDEX idx_workflow_runs_status ON workflow_runs (project_id, status);
 CREATE INDEX idx_workflow_runs_deadline ON workflow_runs (deadline_at) WHERE status IN ('pending', 'running') AND deadline_at IS NOT NULL;
+CREATE INDEX idx_workflow_runs_debounce ON workflow_runs (debounced_until) WHERE debounced_until IS NOT NULL;
 CREATE INDEX idx_workflow_runs_forked ON workflow_runs (forked_from_id) WHERE forked_from_id IS NOT NULL;
 CREATE UNIQUE INDEX idx_workflow_runs_dedup ON workflow_runs (project_id, deduplication_id) WHERE deduplication_id IS NOT NULL;
 CREATE INDEX idx_workflow_runs_parent ON workflow_runs (parent_workflow_id) WHERE parent_workflow_id IS NOT NULL;

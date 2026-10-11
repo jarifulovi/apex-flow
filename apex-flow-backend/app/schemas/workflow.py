@@ -29,6 +29,12 @@ class WorkflowCreate(BaseModel):
     timeout_seconds: Optional[int] = Field(
         default=None, ge=1, le=86400 * 30, description="Workflow execution timeout limit in seconds"
     )
+    debounce_seconds: Optional[int] = Field(
+        default=None, ge=1, le=86400, description="Debounce silence window in seconds before execution begins"
+    )
+    max_debounce_seconds: Optional[int] = Field(
+        default=None, ge=1, le=86400 * 7, description="Maximum total debounce extension window before forced release"
+    )
 
 
 # Schema to receive on workflow run update
@@ -60,6 +66,9 @@ class WorkflowResponse(BaseModel):
     priority: int = 0
     timeout_seconds: Optional[int] = None
     deadline_at: Optional[datetime] = None
+    debounce_seconds: Optional[int] = None
+    debounced_until: Optional[datetime] = None
+    debounce_deadline_at: Optional[datetime] = None
     error_message: Optional[str] = None
     steps_count: int = 0
     started_at: Optional[datetime] = None

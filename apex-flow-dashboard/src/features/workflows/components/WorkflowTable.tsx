@@ -81,6 +81,11 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
                             P{wf.priority}
                           </span>
                         )}
+                        {wf.debounced_until && new Date(wf.debounced_until).getTime() > Date.now() && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse">
+                            debouncing
+                          </span>
+                        )}
                       </div>
                       <p className="table-meta">ID: {wf.id}</p>
                     </div>

@@ -71,6 +71,18 @@ class WorkflowRun(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    debounce_seconds: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    debounced_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    debounce_deadline_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     error_message: Mapped[Optional[str]] = mapped_column(
         Text,
         nullable=True,
