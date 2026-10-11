@@ -22,6 +22,9 @@ class WorkflowCreate(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     deduplication_id: Optional[str] = None
     parent_workflow_id: Optional[uuid.UUID] = None
+    timeout_seconds: Optional[int] = Field(
+        default=None, ge=1, le=86400 * 30, description="Workflow execution timeout limit in seconds"
+    )
 
 
 # Schema to receive on workflow run update
@@ -39,6 +42,9 @@ class WorkflowResponse(BaseModel):
     metadata: Dict[str, Any] = Field(alias="metadata_")
     deduplication_id: Optional[str] = None
     parent_workflow_id: Optional[uuid.UUID] = None
+    timeout_seconds: Optional[int] = None
+    deadline_at: Optional[datetime] = None
+    error_message: Optional[str] = None
     steps_count: int = 0
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

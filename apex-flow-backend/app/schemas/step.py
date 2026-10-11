@@ -20,6 +20,7 @@ class WorkflowStepCreate(BaseModel):
     step_order: int = 1
     input_payload: Optional[Dict[str, Any]] = Field(default_factory=dict)
     max_attempts: int = 3
+    priority: int = Field(default=0, ge=-1000, le=1000, description="Step queue priority (lower runs earlier)")
     delay_seconds: Optional[int] = Field(default=None, ge=0, description="Delay in seconds before step becomes eligible for worker polling")
 
 
@@ -50,6 +51,7 @@ class WorkflowStepResponse(BaseModel):
     status: StepStatus
     attempt_count: int
     max_attempts: int
+    priority: int = 0
     available_at: datetime
     locked_until: Optional[datetime] = None
     input_payload: Dict[str, Any]

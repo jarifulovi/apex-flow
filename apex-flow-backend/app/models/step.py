@@ -53,6 +53,12 @@ class WorkflowStep(Base):
         default=3,
         server_default=text("3"),
     )
+    priority: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
     available_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

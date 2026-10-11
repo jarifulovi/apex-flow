@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +42,11 @@ class WorkflowService:
             if existing_run:
                 return existing_run
 
+        now = datetime.now(timezone.utc)
+        deadline = None
+        if payload.timeout_seconds and payload.timeout_seconds > 0:
+            deadline = now + timedelta(seconds=payload.timeout_seconds)
+
         workflow_run = WorkflowRun(
             project_id=target_project_id,
             workflow_name=payload.workflow_name,
@@ -49,6 +54,8 @@ class WorkflowService:
             metadata_=payload.metadata or {},
             deduplication_id=payload.deduplication_id,
             parent_workflow_id=payload.parent_workflow_id,
+            timeout_seconds=payload.timeout_seconds,
+            deadline_at=deadline,
         )
         db.add(workflow_run)
         await db.commit()
@@ -170,6 +177,27 @@ class WorkflowService:
         if not workflow_run:
             raise EntityNotFoundException("WorkflowRun", workflow_run_id)
 
+        # Enforce execution timeout if deadline has passed
+        now = datetime.now(timezone.utc)
+        if (
+            workflow_run.status in ("pending", "running")
+            and workflow_run.deadline_at
+            and workflow_run.deadline_at <= now
+        ):
+            workflow_run.status = "failed"
+            workflow_run.completed_at = now
+            workflow_run.error_message = (
+                f"Workflow execution timed out (exceeded {workflow_run.timeout_seconds}s limit)."
+            )
+            for step in workflow_run.steps:
+                if step.status in ("queued", "running"):
+                    step.status = "cancelled"
+                    step.completed_at = now
+                    step.error_message = "Cancelled due to workflow timeout."
+                    step.locked_until = None
+            await db.commit()
+            await db.refresh(workflow_run)
+
         # Fetch child sub-workflows for workflow detail in 1 DB query
         sub_query = (
             select(WorkflowRun)
@@ -236,6 +264,11 @@ class WorkflowService:
         workflow_run.status = "running"
         workflow_run.completed_at = None
         workflow_run.started_at = now
+        workflow_run.error_message = None
+        if workflow_run.timeout_seconds and workflow_run.timeout_seconds > 0:
+            workflow_run.deadline_at = now + timedelta(seconds=workflow_run.timeout_seconds)
+        else:
+            workflow_run.deadline_at = None
 
         # Reset failed/cancelled steps to queued
         for step in workflow_run.steps:

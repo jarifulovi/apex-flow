@@ -65,6 +65,7 @@ class WorkflowContext:
         retries: int = 3,
         backoff_factor: float = 2.0,
         delay_seconds: Optional[int] = None,
+        priority: int = 0,
         input_payload: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """
@@ -111,6 +112,8 @@ class WorkflowContext:
                 "input_payload": offloaded_input if isinstance(offloaded_input, dict) else {"result": offloaded_input},
                 "max_attempts": retries,
             }
+            if priority != 0:
+                step_payload["priority"] = priority
             if delay_seconds is not None and delay_seconds > 0:
                 step_payload["delay_seconds"] = delay_seconds
 
@@ -214,6 +217,7 @@ class WorkflowContext:
         name: str,
         metadata: Optional[Dict[str, Any]] = None,
         deduplication_id: Optional[str] = None,
+        timeout_seconds: Optional[int] = None,
     ) -> uuid.UUID:
         """
         Trigger a child sub-workflow execution run linked to this parent workflow run.
@@ -224,4 +228,5 @@ class WorkflowContext:
             metadata=metadata,
             deduplication_id=deduplication_id,
             parent_workflow_id=self.workflow_run_id,
+            timeout_seconds=timeout_seconds,
         )

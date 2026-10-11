@@ -117,10 +117,11 @@ class ApexFlowClient:
         metadata: Optional[Dict[str, Any]] = None,
         deduplication_id: Optional[str] = None,
         parent_workflow_id: Optional[Union[str, uuid.UUID]] = None,
+        timeout_seconds: Optional[int] = None,
     ) -> uuid.UUID:
         """
         Trigger a new workflow execution run on the ApexFlow control plane.
-        Supports deduplication_id for idempotency and parent_workflow_id for sub-workflows.
+        Supports deduplication_id for idempotency, parent_workflow_id for sub-workflows, and timeout_seconds for execution limits.
         """
         raw_metadata = metadata or {}
         offloaded_meta, _ = await StorageResolver.offload_if_needed(
@@ -135,6 +136,8 @@ class ApexFlowClient:
             payload["deduplication_id"] = deduplication_id
         if parent_workflow_id:
             payload["parent_workflow_id"] = str(parent_workflow_id)
+        if timeout_seconds and timeout_seconds > 0:
+            payload["timeout_seconds"] = timeout_seconds
 
         res = await self._request_with_retry("POST", f"{self.base_url}/api/v1/workflows", json=payload)
         res.raise_for_status()

@@ -51,13 +51,67 @@ class QueueService:
                 await db.execute(
                     update(WorkflowRun)
                     .where(WorkflowRun.id == step.workflow_run_id)
-                    .values(status="failed", completed_at=now)
+                    .values(
+                        status="failed",
+                        completed_at=now,
+                        error_message="Execution lock expired (worker timeout/crash).",
+                    )
                 )
 
         if stale_steps:
             await db.commit()
 
         return len(stale_steps)
+
+    @staticmethod
+    async def recover_timed_out_workflows(
+        db: AsyncSession, project_id: Optional[uuid.UUID] = None
+    ) -> int:
+        """
+        Scans for active workflow runs (pending or running) past their deadline_at.
+        Marks them as 'failed', records error_message, and cancels any queued or running child steps.
+        """
+        now = datetime.now(timezone.utc)
+        stmt = select(WorkflowRun).where(
+            WorkflowRun.status.in_(["pending", "running"]),
+            WorkflowRun.deadline_at.is_not(None),
+            WorkflowRun.deadline_at <= now,
+        )
+        if project_id:
+            stmt = stmt.where(WorkflowRun.project_id == project_id)
+
+        if db.bind and db.bind.dialect.name == "postgresql":
+            stmt = stmt.with_for_update(skip_locked=True)
+
+        res = await db.execute(stmt)
+        timed_out_runs = list(res.scalars().all())
+
+        for run in timed_out_runs:
+            run.status = "failed"
+            run.completed_at = now
+            run.error_message = (
+                f"Workflow execution timed out (exceeded {run.timeout_seconds}s limit)."
+            )
+
+            # Cancel any queued or running steps under this workflow run
+            await db.execute(
+                update(WorkflowStep)
+                .where(
+                    WorkflowStep.workflow_run_id == run.id,
+                    WorkflowStep.status.in_(["queued", "running"]),
+                )
+                .values(
+                    status="cancelled",
+                    completed_at=now,
+                    error_message="Cancelled due to workflow timeout.",
+                    locked_until=None,
+                )
+            )
+
+        if timed_out_runs:
+            await db.commit()
+
+        return len(timed_out_runs)
 
     @staticmethod
     async def poll_next_step(
@@ -67,12 +121,13 @@ class QueueService:
     ) -> Optional[WorkflowStep]:
         """
         Poll the next queued step using PostgreSQL FOR UPDATE SKIP LOCKED.
-        Supports targeted step_names filtering, lease locking, and worker heartbeat updating.
+        Supports targeted step_names filtering, priority ordering, lease locking, and worker heartbeat updating.
         """
         now = datetime.now(timezone.utc)
 
-        # 1. Recover any expired step locks for this project first
+        # 1. Recover any expired step locks and timed-out workflows for this project
         await QueueService.recover_stale_locks(db=db, project_id=project_id)
+        await QueueService.recover_timed_out_workflows(db=db, project_id=project_id)
 
         # 2. Register worker heartbeat if worker info provided
         poll_payload = payload or StepPollRequest()
@@ -86,7 +141,7 @@ class QueueService:
                 ),
             )
 
-        # 3. Query next available queued step
+        # 3. Query next available queued step (priority first, then available_at, then FIFO created_at)
         stmt = (
             select(WorkflowStep)
             .join(WorkflowRun, WorkflowStep.workflow_run_id == WorkflowRun.id)
@@ -100,7 +155,11 @@ class QueueService:
         if poll_payload.step_names:
             stmt = stmt.where(WorkflowStep.step_name.in_(poll_payload.step_names))
 
-        stmt = stmt.order_by(WorkflowStep.available_at.asc(), WorkflowStep.created_at.asc()).limit(1)
+        stmt = stmt.order_by(
+            WorkflowStep.priority.asc(),
+            WorkflowStep.available_at.asc(),
+            WorkflowStep.created_at.asc(),
+        ).limit(1)
         if db.bind and db.bind.dialect.name == "postgresql":
             stmt = stmt.with_for_update(of=WorkflowStep, skip_locked=True)
 

@@ -38,6 +38,7 @@ class StepService:
             step_order=payload.step_order,
             status="queued",
             max_attempts=payload.max_attempts,
+            priority=payload.priority,
             available_at=available_time,
             input_payload=input_payload,
         )
@@ -90,7 +91,11 @@ class StepService:
                 await db.execute(
                     update(WorkflowRun)
                     .where(WorkflowRun.id == step.workflow_run_id)
-                    .values(status="failed", completed_at=now)
+                    .values(
+                        status="failed",
+                        completed_at=now,
+                        error_message=f"Step '{step.step_name}' failed after {step.attempt_count} attempts: {step.error_message or 'Step execution failed'}",
+                    )
                 )
         else:
             step.status = "success"
