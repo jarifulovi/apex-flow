@@ -2,6 +2,8 @@ import json
 from typing import Any, Tuple
 import httpx
 
+from apex_flow_sdk.core.serialization import to_jsonable
+
 
 class StorageResolver:
     """Client-side adapter for detecting offload references, uploading large payloads, and resolving $apexflow_ref pointers."""
@@ -59,12 +61,13 @@ class StorageResolver:
             content_type = "text/plain"
             filename = "payload.txt"
         else:
-            data_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            normalized_payload = to_jsonable(payload)
+            data_bytes = json.dumps(normalized_payload, ensure_ascii=False).encode("utf-8")
             content_type = "application/json"
             filename = "payload.json"
 
         if len(data_bytes) <= cls.MAX_INLINE_BYTES:
-            return payload, False
+            return normalized_payload, False
 
         files = {"file": (filename, data_bytes, content_type)}
         endpoint = "/api/v1/storage/upload"

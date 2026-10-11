@@ -17,9 +17,9 @@ class WorkflowContext:
         self.workflow_id = workflow_run_id  # Alias for backward compatibility
         self.client = client
         self.store_payloads = store_payloads
-        self.step_cache: Dict[str, Any] = {}
-        self.completed_checkpoints: Dict[str, Dict[str, Any]] = {}
-        self.active_step_ids: Dict[str, str] = {}
+        self.step_cache: Dict[Any, Any] = {}
+        self.completed_checkpoints: Dict[Any, Any] = {}
+        self.active_step_ids: Dict[Any, str] = {}
         self._checkpoints_loaded = False
         self._step_counter = 0
 
@@ -35,10 +35,13 @@ class WorkflowContext:
                 run_detail = res.json()
                 for step_info in run_detail.get("steps", []):
                     step_name = step_info.get("step_name")
+                    step_order = step_info.get("step_order")
                     status = step_info.get("status")
                     step_id = step_info.get("id")
 
                     if step_name and step_id:
+                        if step_order is not None:
+                            self.active_step_ids[(step_name, step_order)] = step_id
                         self.active_step_ids[step_name] = step_id
 
                     if status == "success":
@@ -47,6 +50,8 @@ class WorkflowContext:
                             self.client.http_client, self.client.base_url, out_payload
                         )
                         val = resolved_out.get("result", resolved_out) if isinstance(resolved_out, dict) else resolved_out
+                        if step_order is not None:
+                            self.completed_checkpoints[(step_name, step_order)] = val
                         self.completed_checkpoints[step_name] = val
         except Exception:
             pass  # Fallback to local execution if checkpoint query fails
@@ -65,20 +70,32 @@ class WorkflowContext:
         Execute a modular workflow step with durable checkpointing, retries, and control plane status tracking.
         """
         self._step_counter += 1
+        current_step_order = self._step_counter
+        step_key = (name, current_step_order)
 
-        # 1. Check local in-memory cache first
-        if name in self.step_cache:
+        # 1. Check local in-memory cache first (deterministic (name, step_order) or name for single-step fallback)
+        if step_key in self.step_cache:
+            return self.step_cache[step_key]
+        elif name in self.step_cache and current_step_order == 1:
             return self.step_cache[name]
 
         # 2. Check control plane durable checkpoints (resuming from last successful step)
         await self._fetch_checkpoints()
-        if name in self.completed_checkpoints:
+        if step_key in self.completed_checkpoints:
+            checkpoint_val = self.completed_checkpoints[step_key]
+            self.step_cache[step_key] = checkpoint_val
+            self.step_cache[name] = checkpoint_val
+            return checkpoint_val
+        elif name in self.completed_checkpoints and current_step_order == 1:
             checkpoint_val = self.completed_checkpoints[name]
+            self.step_cache[step_key] = checkpoint_val
             self.step_cache[name] = checkpoint_val
             return checkpoint_val
 
         # 3. Use existing step ID if pre-queued or acquired, otherwise queue step on control plane
-        step_id = self.active_step_ids.get(name)
+        step_id = self.active_step_ids.get(step_key)
+        if not step_id and current_step_order == 1:
+            step_id = self.active_step_ids.get(name)
 
         if not step_id:
             raw_input = input_payload or {}
@@ -89,7 +106,7 @@ class WorkflowContext:
             step_payload = {
                 "workflow_id": str(self.workflow_run_id),
                 "step_name": name,
-                "step_order": self._step_counter,
+                "step_order": current_step_order,
                 "input_payload": offloaded_input if isinstance(offloaded_input, dict) else {"result": offloaded_input},
                 "max_attempts": retries,
             }
@@ -100,6 +117,7 @@ class WorkflowContext:
                 raise StepFailedError(name, f"Failed to queue step on control plane: {res.text}")
 
             step_id = res.json()["id"]
+            self.active_step_ids[step_key] = step_id
             self.active_step_ids[name] = step_id
 
         # 4. Execute step function locally with retry logic
@@ -149,6 +167,7 @@ class WorkflowContext:
                 )
 
                 # Cache result and return
+                self.step_cache[step_key] = output
                 self.step_cache[name] = output
                 return output
 
