@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Tuple
 from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,12 +28,17 @@ class StepService:
             payload.input_payload or {}
         )
 
+        available_time = now
+        if payload.delay_seconds and payload.delay_seconds > 0:
+            available_time = now + timedelta(seconds=payload.delay_seconds)
+
         step = WorkflowStep(
             workflow_run_id=payload.workflow_id,
             step_name=payload.step_name,
             step_order=payload.step_order,
             status="queued",
             max_attempts=payload.max_attempts,
+            available_at=available_time,
             input_payload=input_payload,
         )
         db.add(step)
@@ -70,6 +75,15 @@ class StepService:
             if step.attempt_count < step.max_attempts:
                 step.status = "queued"
                 step.locked_until = None
+
+                # Calculate server-side backoff retry delay
+                if payload.retry_delay_seconds is not None and payload.retry_delay_seconds >= 0:
+                    retry_delay = payload.retry_delay_seconds
+                else:
+                    # Default exponential backoff: 2^(attempt-1), e.g. attempt 1 -> 2s, attempt 2 -> 4s
+                    retry_delay = min(300, 2 ** max(0, step.attempt_count - 1))
+
+                step.available_at = now + timedelta(seconds=retry_delay)
             else:
                 step.status = "failed"
                 step.completed_at = now

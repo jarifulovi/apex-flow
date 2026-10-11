@@ -21,5 +21,5 @@ async def test_central_exception_handler_not_found(test_project_key: str):
     data = res.json()
     assert "error" in data
     assert data["error"]["code"] == "ENTITY_NOT_FOUND"
-    assert f"Workflow with ID '{dummy_id}' not found." in data["error"]["message"]
-    assert data["error"]["details"]["entity_name"] == "Workflow"
+    assert f"WorkflowRun with ID '{dummy_id}' not found." in data["error"]["message"]
+    assert data["error"]["details"]["entity_name"] == "WorkflowRun"

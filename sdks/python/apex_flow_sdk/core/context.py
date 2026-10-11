@@ -64,6 +64,7 @@ class WorkflowContext:
         fn: Callable[[], Any],
         retries: int = 3,
         backoff_factor: float = 2.0,
+        delay_seconds: Optional[int] = None,
         input_payload: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """
@@ -110,6 +111,9 @@ class WorkflowContext:
                 "input_payload": offloaded_input if isinstance(offloaded_input, dict) else {"result": offloaded_input},
                 "max_attempts": retries,
             }
+            if delay_seconds is not None and delay_seconds > 0:
+                step_payload["delay_seconds"] = delay_seconds
+
             res = await self.client.http_client.post(
                 f"{self.client.base_url}/api/v1/steps", json=step_payload
             )
@@ -119,6 +123,10 @@ class WorkflowContext:
             step_id = res.json()["id"]
             self.active_step_ids[step_key] = step_id
             self.active_step_ids[name] = step_id
+
+        # Delay execution if initial delay requested and running inline
+        if delay_seconds is not None and delay_seconds > 0:
+            await asyncio.sleep(delay_seconds)
 
         # 4. Execute step function locally with retry logic
         last_exception: Optional[Exception] = None

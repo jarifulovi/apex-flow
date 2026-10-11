@@ -40,6 +40,7 @@ class QueueService:
             if step.attempt_count < step.max_attempts:
                 step.status = "queued"
                 step.locked_until = None
+                step.available_at = now
             else:
                 step.status = "failed"
                 step.error_message = "Execution lock expired (worker timeout/crash)."
@@ -92,13 +93,14 @@ class QueueService:
             .where(
                 WorkflowRun.project_id == project_id,
                 WorkflowStep.status == "queued",
+                WorkflowStep.available_at <= now,
             )
         )
 
         if poll_payload.step_names:
             stmt = stmt.where(WorkflowStep.step_name.in_(poll_payload.step_names))
 
-        stmt = stmt.order_by(WorkflowStep.created_at.asc()).limit(1)
+        stmt = stmt.order_by(WorkflowStep.available_at.asc(), WorkflowStep.created_at.asc()).limit(1)
         if db.bind and db.bind.dialect.name == "postgresql":
             stmt = stmt.with_for_update(of=WorkflowStep, skip_locked=True)
 

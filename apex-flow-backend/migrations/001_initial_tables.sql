@@ -43,7 +43,7 @@ CREATE TABLE project_keys (
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     key_prefix TEXT NOT NULL,
-    key_hash TEXT NOT NULL UNIQUE,
+    key_hash TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'active',
     last_used_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -96,6 +96,7 @@ CREATE TABLE workflow_steps (
     status TEXT NOT NULL DEFAULT 'queued',
     attempt_count INTEGER NOT NULL DEFAULT 0,
     max_attempts INTEGER NOT NULL DEFAULT 3,
+    available_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     locked_until TIMESTAMPTZ NULL,
     input_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     output_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -106,11 +107,11 @@ CREATE TABLE workflow_steps (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- High-performance queue polling index (FOR UPDATE SKIP LOCKED)
-CREATE INDEX idx_workflow_steps_queue ON workflow_steps (status, created_at) WHERE status = 'queued';
+-- High-performance queue polling index (FOR UPDATE SKIP LOCKED with delayed scheduling)
+CREATE INDEX idx_workflow_steps_queue ON workflow_steps (available_at, created_at) WHERE status = 'queued';
 
 -- Lock recovery index for stale running steps
-CREATE INDEX idx_workflow_steps_locked ON workflow_steps (status, locked_until) WHERE status = 'running';
+CREATE INDEX idx_workflow_steps_locked ON workflow_steps (locked_until) WHERE status = 'running';
 
 -- Run steps lookups
 CREATE INDEX idx_workflow_steps_run ON workflow_steps (workflow_run_id, created_at);

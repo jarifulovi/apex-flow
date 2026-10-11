@@ -245,6 +245,7 @@ class WorkflowService:
                 step.error_message = None
                 step.locked_until = None
                 step.completed_at = None
+                step.available_at = now
 
         # Cascade reset to child sub-workflows if failed or cancelled
         await db.execute(

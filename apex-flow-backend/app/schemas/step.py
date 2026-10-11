@@ -20,6 +20,7 @@ class WorkflowStepCreate(BaseModel):
     step_order: int = 1
     input_payload: Optional[Dict[str, Any]] = Field(default_factory=dict)
     max_attempts: int = 3
+    delay_seconds: Optional[int] = Field(default=None, ge=0, description="Delay in seconds before step becomes eligible for worker polling")
 
 
 # Schema for worker poll request
@@ -37,6 +38,7 @@ class StepReportPayload(BaseModel):
     attempt_count: Optional[int] = None
     output_payload: Optional[Dict[str, Any]] = Field(default_factory=dict)
     error_message: Optional[str] = None
+    retry_delay_seconds: Optional[int] = Field(default=None, ge=0, description="Custom backoff delay in seconds before next retry attempt")
 
 
 # Schema for step response API objects
@@ -48,6 +50,7 @@ class WorkflowStepResponse(BaseModel):
     status: StepStatus
     attempt_count: int
     max_attempts: int
+    available_at: datetime
     locked_until: Optional[datetime] = None
     input_payload: Dict[str, Any]
     output_payload: Dict[str, Any]
