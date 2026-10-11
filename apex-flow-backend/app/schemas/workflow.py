@@ -22,6 +22,10 @@ class WorkflowCreate(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     deduplication_id: Optional[str] = None
     parent_workflow_id: Optional[uuid.UUID] = None
+    forked_from_id: Optional[uuid.UUID] = None
+    priority: int = Field(
+        default=0, ge=-1000, le=1000, description="Workflow run priority (lower numbers execute earlier)"
+    )
     timeout_seconds: Optional[int] = Field(
         default=None, ge=1, le=86400 * 30, description="Workflow execution timeout limit in seconds"
     )
@@ -33,6 +37,16 @@ class WorkflowUpdate(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+# Schema for workflow forking request (Time-travel debugging)
+class WorkflowForkRequest(BaseModel):
+    from_step_order: int = Field(
+        default=1, ge=1, description="Step order number from which execution will branch"
+    )
+    workflow_name: Optional[str] = None
+    metadata_override: Optional[Dict[str, Any]] = None
+    priority: Optional[int] = Field(default=None, ge=-1000, le=1000)
+
+
 # Schema for basic workflow run API response
 class WorkflowResponse(BaseModel):
     id: uuid.UUID
@@ -42,6 +56,8 @@ class WorkflowResponse(BaseModel):
     metadata: Dict[str, Any] = Field(alias="metadata_")
     deduplication_id: Optional[str] = None
     parent_workflow_id: Optional[uuid.UUID] = None
+    forked_from_id: Optional[uuid.UUID] = None
+    priority: int = 0
     timeout_seconds: Optional[int] = None
     deadline_at: Optional[datetime] = None
     error_message: Optional[str] = None

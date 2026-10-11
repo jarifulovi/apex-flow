@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useCallback, use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/shared/Header";
 import {
   ArrowLeft,
   GitBranch,
+  GitFork,
   Clock,
   CheckCircle2,
   AlertTriangle,
@@ -23,6 +25,7 @@ import {
   getWorkflows,
   cancelWorkflowRun,
   restartWorkflowRun,
+  forkWorkflowRun,
   formatDurationMs,
   type Workflow,
   type WorkflowDetail,
@@ -83,6 +86,7 @@ function PayloadButton({ label, payload }: { label: string; payload?: Record<str
 export default function WorkflowDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const workflowId = resolvedParams.id;
+  const router = useRouter();
   const { accessToken } = useAuth();
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
   const [childWorkflows, setChildWorkflows] = useState<Workflow[]>([]);
@@ -135,6 +139,25 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
     } catch (err: any) {
       alert(`Failed to restart workflow: ${err?.message || err}`);
     } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleFork = async (fromStepOrder: number) => {
+    if (!accessToken || !workflowId || actionLoading) return;
+    const confirmed = window.confirm(
+      `Fork workflow from Step #${fromStepOrder}? This creates a new run with previous steps checkpointed and resumes execution from this step.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setActionLoading(true);
+      const forked = await forkWorkflowRun(accessToken, workflowId, {
+        from_step_order: fromStepOrder,
+      });
+      router.push(`/dashboard/workflows/${forked.id}`);
+    } catch (err: any) {
+      alert(`Failed to fork workflow: ${err?.message || err}`);
       setActionLoading(false);
     }
   };
@@ -236,7 +259,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
 
       <div className="page-content space-y-6">
         {/* Workflow Overview Banner */}
-        <div className="bg-[#161620] border border-white/10 rounded-xl p-6 shadow-xl grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-[#161620] border border-white/10 rounded-xl p-6 shadow-xl grid grid-cols-2 md:grid-cols-5 gap-6">
           <div>
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
               Execution Status
@@ -244,6 +267,17 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
             <span className={statusCfg.className}>
               <span className={`status-dot ${statusCfg.dot}`} />
               {statusCfg.label}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
+              Priority
+            </span>
+            <span className="text-sm font-semibold text-zinc-100 font-mono flex items-center gap-1.5">
+              <span className="px-1.5 py-0.5 rounded text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                P{detail.priority ?? 0}
+              </span>
             </span>
           </div>
 
@@ -268,15 +302,42 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
 
           <div>
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">
-              Started At
+              {detail.timeout_seconds ? "Timeout / Started" : "Started At"}
             </span>
-            <span className="text-xs text-zinc-300 font-mono">
+            <span className="text-xs text-zinc-300 font-mono block">
               {detail.started_at || detail.created_at
                 ? new Date(detail.started_at || detail.created_at).toLocaleString()
                 : "—"}
             </span>
+            {detail.timeout_seconds && (
+              <span className="text-[10px] text-amber-400/90 font-mono block mt-0.5">
+                Limit: {detail.timeout_seconds}s
+              </span>
+            )}
           </div>
         </div>
+
+        {/* Ancestor Fork Lineage */}
+        {detail.forked_from_id && (
+          <div className="bg-amber-950/20 border border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 text-amber-300">
+              <GitFork size={16} className="text-amber-400 shrink-0" />
+              <span>
+                Time-Travel Fork branched from Run:{" "}
+                <code className="font-mono text-amber-200 font-semibold">{detail.forked_from_id}</code>
+              </span>
+            </div>
+            <Link href={`/dashboard/workflows/${detail.forked_from_id}`}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-amber-500/40 text-amber-300 hover:text-white bg-amber-950/60 hover:bg-amber-900/60 text-xs h-7 px-3 gap-1 shrink-0"
+              >
+                <span>View Original Run →</span>
+              </Button>
+            </Link>
+          </div>
+        )}
 
         {/* Sub-Workflow Parent Lineage */}
         {detail.parent_workflow_id && (
@@ -395,6 +456,17 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                           <div className="flex items-center gap-1.5 ml-1">
                             <PayloadButton label="Input JSON" payload={step.input_payload} />
                             <PayloadButton label="Output JSON" payload={step.output_payload} />
+                            <Button
+                              onClick={() => handleFork(step.step_order || index + 1)}
+                              disabled={actionLoading}
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-[11px] border-amber-500/30 text-amber-300 hover:text-white bg-amber-950/40 hover:bg-amber-900/60 shrink-0 gap-1 px-2 font-mono"
+                              title={`Fork workflow resuming from Step #${step.step_order || index + 1}`}
+                            >
+                              <GitFork size={11} className="text-amber-400" />
+                              <span>Fork</span>
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -408,20 +480,33 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                             </span>
                             <span className="line-clamp-2">{step.error_message}</span>
                           </div>
-                          <Button
-                            onClick={() =>
-                              setSelectedErrorStep({
-                                stepName: step.step_name,
-                                errorMessage: step.error_message!,
-                              })
-                            }
-                            variant="outline"
-                            size="sm"
-                            className="h-6 text-[11px] border-red-500/40 text-red-300 hover:text-white bg-red-900/40 shrink-0 gap-1 px-2"
-                          >
-                            <Maximize2 size={11} />
-                            <span>Inspect Error</span>
-                          </Button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Button
+                              onClick={() => handleFork(step.step_order || index + 1)}
+                              disabled={actionLoading}
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-[11px] border-amber-500/40 text-amber-300 hover:text-white bg-amber-900/40 gap-1 px-2"
+                              title="Fork run and re-execute starting from this failed step"
+                            >
+                              <GitFork size={11} className="text-amber-400" />
+                              <span>Fork from Failed Step</span>
+                            </Button>
+                            <Button
+                              onClick={() =>
+                                setSelectedErrorStep({
+                                  stepName: step.step_name,
+                                  errorMessage: step.error_message!,
+                                })
+                              }
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-[11px] border-red-500/40 text-red-300 hover:text-white bg-red-900/40 shrink-0 gap-1 px-2"
+                            >
+                              <Maximize2 size={11} />
+                              <span>Inspect Error</span>
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>

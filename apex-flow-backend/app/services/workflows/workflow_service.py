@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -54,6 +54,8 @@ class WorkflowService:
             metadata_=payload.metadata or {},
             deduplication_id=payload.deduplication_id,
             parent_workflow_id=payload.parent_workflow_id,
+            forked_from_id=payload.forked_from_id,
+            priority=payload.priority,
             timeout_seconds=payload.timeout_seconds,
             deadline_at=deadline,
         )
@@ -320,4 +322,92 @@ class WorkflowService:
         await db.commit()
         await db.refresh(workflow_run)
         return workflow_run
+
+    @staticmethod
+    async def fork_workflow_run(
+        db: AsyncSession,
+        workflow_run_id: uuid.UUID,
+        from_step_order: int = 1,
+        owner_id: Optional[uuid.UUID] = None,
+        project_id: Optional[uuid.UUID] = None,
+        metadata_override: Optional[Dict[str, Any]] = None,
+        new_name: Optional[str] = None,
+        priority: Optional[int] = None,
+    ) -> WorkflowRun:
+        """
+        Time-Travel Fork: Clones workflow execution state up to from_step_order into a new WorkflowRun.
+        Steps < from_step_order are cloned as completed checkpoints with memoized output.
+        Step == from_step_order is queued fresh as the starting execution point.
+        """
+        source_run = await WorkflowService.get_workflow_run_by_id(
+            db=db, workflow_run_id=workflow_run_id, owner_id=owner_id, project_id=project_id
+        )
+
+        now = datetime.now(timezone.utc)
+        deadline = None
+        if source_run.timeout_seconds and source_run.timeout_seconds > 0:
+            deadline = now + timedelta(seconds=source_run.timeout_seconds)
+
+        forked_run = WorkflowRun(
+            project_id=source_run.project_id,
+            workflow_name=new_name or source_run.workflow_name,
+            status="pending",
+            metadata_=metadata_override if metadata_override is not None else dict(source_run.metadata_),
+            deduplication_id=None,
+            parent_workflow_id=source_run.parent_workflow_id,
+            forked_from_id=source_run.id,
+            priority=priority if priority is not None else source_run.priority,
+            timeout_seconds=source_run.timeout_seconds,
+            deadline_at=deadline,
+        )
+        db.add(forked_run)
+        await db.flush()
+
+        sorted_steps = sorted(source_run.steps, key=lambda s: s.step_order)
+
+        for step in sorted_steps:
+            if step.step_order < from_step_order:
+                # Memoized completed step checkpoint
+                cloned_step = WorkflowStep(
+                    workflow_run_id=forked_run.id,
+                    step_name=step.step_name,
+                    step_order=step.step_order,
+                    status="success",
+                    attempt_count=max(1, step.attempt_count or 1),
+                    max_attempts=step.max_attempts or 3,
+                    priority=step.priority if step.priority is not None else 0,
+                    available_at=now,
+                    locked_until=None,
+                    input_payload=dict(step.input_payload or {}),
+                    output_payload=dict(step.output_payload or {}),
+                    error_message=None,
+                    started_at=step.started_at or now,
+                    completed_at=now,
+                )
+                db.add(cloned_step)
+            elif step.step_order == from_step_order:
+                # Target fork branch point: queued for fresh execution
+                cloned_step = WorkflowStep(
+                    workflow_run_id=forked_run.id,
+                    step_name=step.step_name,
+                    step_order=step.step_order,
+                    status="queued",
+                    attempt_count=0,
+                    max_attempts=step.max_attempts or 3,
+                    priority=step.priority if step.priority is not None else 0,
+                    available_at=now,
+                    locked_until=None,
+                    input_payload=dict(step.input_payload or {}),
+                    output_payload={},
+                    error_message=None,
+                    started_at=None,
+                    completed_at=None,
+                )
+                db.add(cloned_step)
+
+        await db.commit()
+        await db.refresh(forked_run)
+        return await WorkflowService.get_workflow_run_by_id(
+            db=db, workflow_run_id=forked_run.id, owner_id=owner_id, project_id=project_id
+        )
 

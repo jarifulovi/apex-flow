@@ -44,10 +44,12 @@ export interface WorkflowStepSummary {
   workflow_run_id: string;
   step_name: string;
   step_order?: number;
+  priority?: number;
   status: "queued" | "running" | "success" | "failed" | "cancelled";
   attempt_count: number;
   max_attempts: number;
   locked_until?: string | null;
+  available_at?: string;
   input_payload?: Record<string, unknown>;
   output_payload?: Record<string, unknown>;
   error_message?: string | null;
@@ -62,9 +64,14 @@ export interface Workflow {
   project_id: string;
   workflow_name: string;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  priority?: number;
   metadata: Record<string, unknown>;
   deduplication_id?: string | null;
   parent_workflow_id?: string | null;
+  forked_from_id?: string | null;
+  timeout_seconds?: number | null;
+  deadline_at?: string | null;
+  error_message?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
   steps_count?: number;
@@ -90,8 +97,6 @@ export function formatDurationMs(startedAt?: string | null, completedAt?: string
   return `${mins}m ${secs}s`;
 }
 
-
-
 export async function getWorkflowDetail(token: string, workflowId: string): Promise<WorkflowDetail> {
   return fetchWithAuth<WorkflowDetail>(`/api/v1/workflows/${workflowId}`, token);
 }
@@ -105,5 +110,24 @@ export async function cancelWorkflowRun(token: string, workflowId: string): Prom
 export async function restartWorkflowRun(token: string, workflowId: string): Promise<WorkflowDetail> {
   return fetchWithAuth<WorkflowDetail>(`/api/v1/workflows/${workflowId}/restart`, token, {
     method: "POST",
+  });
+}
+
+export async function forkWorkflowRun(
+  token: string,
+  workflowId: string,
+  options?: {
+    from_step_order?: number;
+    workflow_name?: string;
+    priority?: number;
+    metadata_override?: Record<string, unknown>;
+  }
+): Promise<WorkflowDetail> {
+  return fetchWithAuth<WorkflowDetail>(`/api/v1/workflows/${workflowId}/fork`, token, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(options || {}),
   });
 }

@@ -32,13 +32,20 @@ class StepService:
         if payload.delay_seconds and payload.delay_seconds > 0:
             available_time = now + timedelta(seconds=payload.delay_seconds)
 
+        step_priority = payload.priority
+        if step_priority == 0:
+            wf_res = await db.execute(select(WorkflowRun.priority).where(WorkflowRun.id == payload.workflow_id))
+            parent_priority = wf_res.scalar_one_or_none()
+            if parent_priority is not None:
+                step_priority = parent_priority
+
         step = WorkflowStep(
             workflow_run_id=payload.workflow_id,
             step_name=payload.step_name,
             step_order=payload.step_order,
             status="queued",
             max_attempts=payload.max_attempts,
-            priority=payload.priority,
+            priority=step_priority,
             available_at=available_time,
             input_payload=input_payload,
         )

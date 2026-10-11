@@ -71,6 +71,16 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
                             sub-workflow
                           </span>
                         )}
+                        {wf.forked_from_id && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            forked
+                          </span>
+                        )}
+                        {wf.priority !== undefined && wf.priority !== 0 && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            P{wf.priority}
+                          </span>
+                        )}
                       </div>
                       <p className="table-meta">ID: {wf.id}</p>
                     </div>

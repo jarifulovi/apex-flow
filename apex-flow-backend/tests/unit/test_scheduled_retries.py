@@ -213,6 +213,7 @@ async def test_recover_stale_locks_resets_available_at_to_now():
     db = AsyncMock()
     db.bind = MagicMock()
     db.bind.dialect.name = "postgresql"
+    db.commit = AsyncMock()
 
     project_id = uuid.uuid4()
     stale_step = WorkflowStep(

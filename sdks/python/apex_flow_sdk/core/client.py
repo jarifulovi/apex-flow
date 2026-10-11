@@ -118,10 +118,11 @@ class ApexFlowClient:
         deduplication_id: Optional[str] = None,
         parent_workflow_id: Optional[Union[str, uuid.UUID]] = None,
         timeout_seconds: Optional[int] = None,
+        priority: int = 0,
     ) -> uuid.UUID:
         """
         Trigger a new workflow execution run on the ApexFlow control plane.
-        Supports deduplication_id for idempotency, parent_workflow_id for sub-workflows, and timeout_seconds for execution limits.
+        Supports deduplication_id for idempotency, parent_workflow_id for sub-workflows, priority for queuing, and timeout_seconds for execution limits.
         """
         raw_metadata = metadata or {}
         offloaded_meta, _ = await StorageResolver.offload_if_needed(
@@ -138,6 +139,8 @@ class ApexFlowClient:
             payload["parent_workflow_id"] = str(parent_workflow_id)
         if timeout_seconds and timeout_seconds > 0:
             payload["timeout_seconds"] = timeout_seconds
+        if priority != 0:
+            payload["priority"] = priority
 
         res = await self._request_with_retry("POST", f"{self.base_url}/api/v1/workflows", json=payload)
         res.raise_for_status()
@@ -167,6 +170,35 @@ class ApexFlowClient:
         res = await self._request_with_retry("POST", f"{self.base_url}/api/v1/workflows/{workflow_run_id}/restart")
         res.raise_for_status()
         return res.json()
+
+    async def fork_workflow(
+        self,
+        workflow_run_id: Union[str, uuid.UUID],
+        from_step_order: int = 1,
+        workflow_name: Optional[str] = None,
+        metadata_override: Optional[Dict[str, Any]] = None,
+        priority: Optional[int] = None,
+    ) -> uuid.UUID:
+        """
+        Time-Travel Fork: Clones the workflow run state up to from_step_order into a new execution run.
+        Prior steps are copied as completed checkpoints with memoized output; step from_step_order is queued fresh.
+        """
+        payload: Dict[str, Any] = {
+            "from_step_order": from_step_order,
+        }
+        if workflow_name:
+            payload["workflow_name"] = workflow_name
+        if metadata_override:
+            payload["metadata_override"] = metadata_override
+        if priority is not None:
+            payload["priority"] = priority
+
+        res = await self._request_with_retry(
+            "POST", f"{self.base_url}/api/v1/workflows/{workflow_run_id}/fork", json=payload
+        )
+        res.raise_for_status()
+        workflow_data = res.json()
+        return uuid.UUID(workflow_data["id"])
 
     async def send_heartbeat(self):
         """Send worker heartbeat to control plane."""

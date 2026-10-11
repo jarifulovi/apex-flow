@@ -52,6 +52,17 @@ class WorkflowRun(Base):
         ForeignKey("workflow_runs.id", ondelete="SET NULL"),
         nullable=True,
     )
+    forked_from_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("workflow_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    priority: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
     timeout_seconds: Mapped[Optional[int]] = mapped_column(
         Integer,
         nullable=True,

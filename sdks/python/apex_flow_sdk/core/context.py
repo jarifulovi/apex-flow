@@ -218,6 +218,7 @@ class WorkflowContext:
         metadata: Optional[Dict[str, Any]] = None,
         deduplication_id: Optional[str] = None,
         timeout_seconds: Optional[int] = None,
+        priority: int = 0,
     ) -> uuid.UUID:
         """
         Trigger a child sub-workflow execution run linked to this parent workflow run.
@@ -229,4 +230,5 @@ class WorkflowContext:
             deduplication_id=deduplication_id,
             parent_workflow_id=self.workflow_run_id,
             timeout_seconds=timeout_seconds,
+            priority=priority,
         )

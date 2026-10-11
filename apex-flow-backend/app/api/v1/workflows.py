@@ -12,6 +12,7 @@ from app.schemas.project import ProjectKeyContext
 from app.schemas.workflow import (
     WorkflowCreate,
     WorkflowDetailResponse,
+    WorkflowForkRequest,
     WorkflowResponse,
 )
 from app.services.workflows import WorkflowService
@@ -138,5 +139,32 @@ async def complete_workflow_run(
     """
     return await WorkflowService.complete_workflow_run(
         db=db, workflow_run_id=workflow_id, owner_id=authenticated_user_id
+    )
+
+
+@router.post(
+    "/workflows/{workflow_id}/fork",
+    response_model=WorkflowDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def fork_workflow_run(
+    workflow_id: uuid.UUID,
+    payload: Optional[WorkflowForkRequest] = None,
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Time-Travel Fork: Clones the workflow run state up to from_step_order into a new execution run.
+    Prior steps are cloned as completed checkpoints with memoized output; step from_step_order is queued fresh.
+    """
+    fork_req = payload or WorkflowForkRequest()
+    return await WorkflowService.fork_workflow_run(
+        db=db,
+        workflow_run_id=workflow_id,
+        from_step_order=fork_req.from_step_order,
+        owner_id=authenticated_user_id,
+        metadata_override=fork_req.metadata_override,
+        new_name=fork_req.workflow_name,
+        priority=fork_req.priority,
     )
 

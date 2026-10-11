@@ -8,6 +8,7 @@ DROP INDEX IF EXISTS idx_workflow_steps_run;
 DROP INDEX IF EXISTS idx_workflow_steps_locked;
 DROP INDEX IF EXISTS idx_workflow_steps_queue;
 DROP INDEX IF EXISTS idx_workflow_runs_deadline;
+DROP INDEX IF EXISTS idx_workflow_runs_forked;
 DROP INDEX IF EXISTS idx_workflow_runs_parent;
 DROP INDEX IF EXISTS idx_workflow_runs_dedup;
 DROP INDEX IF EXISTS idx_workflow_runs_status;
@@ -77,6 +78,8 @@ CREATE TABLE workflow_runs (
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     deduplication_id TEXT NULL,
     parent_workflow_id UUID NULL REFERENCES workflow_runs(id) ON DELETE SET NULL,
+    forked_from_id UUID NULL REFERENCES workflow_runs(id) ON DELETE SET NULL,
+    priority INTEGER NOT NULL DEFAULT 0,
     timeout_seconds INTEGER NULL,
     deadline_at TIMESTAMPTZ NULL,
     error_message TEXT NULL,
@@ -89,6 +92,7 @@ CREATE TABLE workflow_runs (
 CREATE INDEX idx_workflow_runs_project ON workflow_runs (project_id, created_at DESC);
 CREATE INDEX idx_workflow_runs_status ON workflow_runs (project_id, status);
 CREATE INDEX idx_workflow_runs_deadline ON workflow_runs (deadline_at) WHERE status IN ('pending', 'running') AND deadline_at IS NOT NULL;
+CREATE INDEX idx_workflow_runs_forked ON workflow_runs (forked_from_id) WHERE forked_from_id IS NOT NULL;
 CREATE UNIQUE INDEX idx_workflow_runs_dedup ON workflow_runs (project_id, deduplication_id) WHERE deduplication_id IS NOT NULL;
 CREATE INDEX idx_workflow_runs_parent ON workflow_runs (parent_workflow_id) WHERE parent_workflow_id IS NOT NULL;
 
