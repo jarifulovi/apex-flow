@@ -8,8 +8,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Check, Copy, Download, FileCode2, HardDrive, Package, Search } from "lucide-react";
+import { Check, Copy, Download, FileCode2, HardDrive, Loader2, Package, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { createClient } from "@/lib/supabase/client";
 
 interface PayloadViewerModalProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ export function PayloadViewerModal({
   const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState<"pretty" | "raw">("pretty");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const isOffloaded = useMemo(() => {
     return Boolean(
@@ -75,11 +77,45 @@ export function PayloadViewerModal({
     }
   };
 
-  const handleDownload = () => {
-    if (!offloadRef) return;
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-    const downloadUrl = `${backendUrl}/api/v1/storage/download/${offloadRef.key}`;
-    window.open(downloadUrl, "_blank");
+  const handleDownload = async () => {
+    if (!offloadRef || isDownloading) return;
+    try {
+      setIsDownloading(true);
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
+      const tokenParam = session?.access_token
+        ? `?token=${encodeURIComponent(session.access_token)}`
+        : "";
+      const downloadUrl = `${backendUrl}/api/v1/storage/download/${offloadRef.key}${tokenParam}`;
+
+      const res = await fetch(downloadUrl, { headers });
+      if (!res.ok) {
+        throw new Error(`Download failed with status ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = offloadRef.filename || offloadRef.key.split("/").pop() || "payload.json";
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(blobUrl);
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Failed to download payload:", err);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const lineCount = formattedJson.split("\n").length;
@@ -118,12 +154,17 @@ export function PayloadViewerModal({
             {isOffloaded && (
               <Button
                 onClick={handleDownload}
+                disabled={isDownloading}
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 gap-1.5"
               >
-                <Download size={12} />
-                <span>Download Payload</span>
+                {isDownloading ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Download size={12} />
+                )}
+                <span>{isDownloading ? "Downloading..." : "Download Payload"}</span>
               </Button>
             )}
 

@@ -1,6 +1,6 @@
 import uuid
 from typing import Any, Dict, Optional
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -71,20 +71,31 @@ async def get_current_user_from_jwt(
 async def get_current_user_from_any_auth(
     authorization: Optional[str] = Header(None),
     x_apexflow_project_key: Optional[str] = Header(None, alias="X-ApexFlow-Project-Key"),
+    token: Optional[str] = Query(None),
+    api_key: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> uuid.UUID:
     """
-    Authenticates requests via either Bearer JWT (for Dashboard UI)
-    or X-ApexFlow-Project-Key header (for SDK/Workers).
+    Authenticates requests via:
+      - Bearer JWT header (Authorization: Bearer <jwt>)
+      - Query token parameter (?token=<jwt>)
+      - Project Key header (X-ApexFlow-Project-Key: <key>)
+      - Query api_key parameter (?api_key=<key>)
     Returns owner_id.
     """
     if authorization and authorization.startswith("Bearer "):
         payload = _decode_bearer(authorization)
         return _extract_user_id(payload)
+    elif token:
+        payload = decode_supabase_jwt(token)
+        return _extract_user_id(payload)
     elif x_apexflow_project_key:
         ctx = await get_current_project_key_context(
             x_apexflow_project_key=x_apexflow_project_key, db=db
         )
+        return ctx.owner_id
+    elif api_key:
+        ctx = await ProjectKeyService.authenticate_api_key(db=db, raw_key=api_key)
         return ctx.owner_id
     else:
         raise UnauthorizedException("Authentication required via Bearer token or Project Key.")
