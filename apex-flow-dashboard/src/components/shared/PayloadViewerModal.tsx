@@ -335,10 +335,10 @@ export function PayloadViewerModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl bg-[#12121a] border-white/10 text-zinc-100 shadow-2xl backdrop-blur-xl p-0 gap-0 overflow-hidden rounded-xl sm:max-w-2xl">
+      <DialogContent className="max-w-3xl bg-[#12121a] border-white/10 text-zinc-100 shadow-2xl backdrop-blur-xl p-0 gap-0 overflow-hidden rounded-xl sm:max-w-3xl">
         <DialogHeader className="p-3.5 bg-[#181824] border-b border-white/10 flex flex-row items-center justify-between space-y-0">
-          <div className="flex items-center gap-2.5">
-            <div className={`p-1.5 rounded-lg border ${
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`p-1.5 rounded-lg border shrink-0 ${
               isEncrypted
                 ? decryptedData !== null
                   ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
@@ -356,20 +356,20 @@ export function PayloadViewerModal({
               )}
             </div>
 
-            <div>
-              <div className="flex items-center gap-2">
-                <DialogTitle className="text-sm font-semibold text-zinc-100">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <DialogTitle className="text-sm font-semibold text-zinc-100 truncate">
                   {title}
                 </DialogTitle>
 
                 {isOffloaded && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-violet-500/10 border border-violet-500/30 text-violet-300">
-                    {offloadRef?.provider?.toUpperCase() || "STORAGE"} • {formattedSize || `${byteSize} B`}
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-violet-500/10 border border-violet-500/30 text-violet-300 shrink-0">
+                    {offloadRef?.provider?.toUpperCase() || "STORAGE"}
                   </span>
                 )}
 
                 {isEncrypted && (
-                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border flex items-center gap-1 ${
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border flex items-center gap-1 shrink-0 ${
                     decryptedData !== null
                       ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
                       : "bg-amber-500/10 border-amber-500/30 text-amber-300"
@@ -387,49 +387,43 @@ export function PayloadViewerModal({
                     )}
                   </span>
                 )}
-
-                {activeKeyHint && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">
-                    #{activeKeyHint}
-                  </span>
-                )}
               </div>
 
               <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
-                {lineCount} {lineCount === 1 ? "line" : "lines"} • {byteSize} bytes
+                {lineCount} {lineCount === 1 ? "line" : "lines"} • {formattedSize || `${byteSize} B`}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mr-6">
+          <div className="flex items-center gap-1.5 mr-6 shrink-0">
             {/* Download Action */}
             {decryptedData !== null ? (
               <Button
                 onClick={handleDownloadDecrypted}
                 variant="outline"
                 size="sm"
-                className="h-7 text-xs bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 gap-1.5"
+                className="h-7 px-2 text-xs bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 gap-1 shrink-0"
                 title="Download decrypted JSON"
               >
                 <Download size={12} />
-                <span>Decrypted JSON</span>
+                <span>JSON</span>
               </Button>
-            ) : isOffloaded ? (
+            ) : isOffloaded && !isEncrypted ? (
               <Button
                 onClick={handleDownload}
                 disabled={isDownloading}
                 variant="outline"
                 size="sm"
-                className="h-7 text-xs bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 gap-1.5"
-                title="Download raw file from storage"
+                className="h-7 px-2 text-xs bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 gap-1 shrink-0"
+                title="Download file"
               >
                 {isDownloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                <span>Download</span>
+                <span>File</span>
               </Button>
             ) : null}
 
             {/* Pretty / Raw Switch */}
-            <div className="flex items-center bg-[#0d0d14] rounded-lg p-0.5 border border-white/10">
+            <div className="flex items-center bg-[#0d0d14] rounded-lg p-0.5 border border-white/10 shrink-0">
               <button
                 onClick={() => setMode("pretty")}
                 className={`px-2 py-0.5 text-[11px] font-medium rounded transition-colors ${
@@ -452,23 +446,18 @@ export function PayloadViewerModal({
               </button>
             </div>
 
-            {/* Copy Button */}
+            {/* Copy Icon Button (Icon Only) */}
             <Button
               onClick={handleCopy}
               variant="outline"
               size="sm"
-              className="h-7 text-xs bg-[#1b1b26] border-white/10 text-zinc-200 hover:text-white gap-1 px-2.5"
+              className="h-7 w-7 p-0 bg-[#1b1b26] border-white/10 text-zinc-200 hover:text-white shrink-0 flex items-center justify-center"
+              title={copied ? "Copied to clipboard" : "Copy to clipboard"}
             >
               {copied ? (
-                <>
-                  <Check size={12} className="text-emerald-400" />
-                  <span className="text-emerald-400">Copied</span>
-                </>
+                <Check size={13} className="text-emerald-400" />
               ) : (
-                <>
-                  <Copy size={12} />
-                  <span>Copy</span>
-                </>
+                <Copy size={13} />
               )}
             </Button>
           </div>
@@ -480,9 +469,6 @@ export function PayloadViewerModal({
             <div className="flex items-center gap-2 text-xs text-amber-300/90 shrink-0">
               <KeyRound size={13} className="text-amber-400" />
               <span className="font-medium text-amber-200">Decryption Key</span>
-              {activeKeyHint && (
-                <span className="font-mono text-[10px] text-amber-400/70">({activeKeyHint})</span>
-              )}
             </div>
 
             <div className="flex items-center gap-2 flex-1 max-w-sm ml-auto">
