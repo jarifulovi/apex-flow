@@ -11,28 +11,56 @@ from app.adapters.storage.s3_adapter import S3StorageAdapter
 _adapter_instance: Optional[BaseStorageAdapter] = None
 
 
+def reset_storage_adapter() -> None:
+    """Reset the cached storage adapter instance (primarily for tests)."""
+    global _adapter_instance
+    _adapter_instance = None
+
+
 def get_storage_adapter() -> BaseStorageAdapter:
-    """Returns configured storage adapter instance (Singleton)."""
+    """Returns the configured storage adapter instance.
+
+    Strictly two modes:
+      1. 'local': Strictly for development. Storing files locally is forbidden in production
+                  to prevent ephemeral container disk overflow on hosts like Render.
+      2. 's3' (or 'cloudflare'): Cloudflare R2 / AWS S3 compatible storage.
+                  Fails immediately if misconfigured — NO silent fallback to disk.
+    """
     global _adapter_instance
     if _adapter_instance is not None:
         return _adapter_instance
 
-    if settings.STORAGE_PROVIDER == "s3" and settings.S3_BUCKET_NAME:
-        try:
-            _adapter_instance = S3StorageAdapter(
-                bucket_name=settings.S3_BUCKET_NAME,
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                endpoint_url=settings.S3_ENDPOINT_URL,
-                region_name=settings.AWS_REGION,
-            )
-            return _adapter_instance
-        except Exception:
-            # Fallback to local storage if S3 initialization fails
-            pass
+    provider = (settings.STORAGE_PROVIDER or "local").strip().lower()
 
-    _adapter_instance = LocalStorageAdapter(base_dir=settings.STORAGE_LOCAL_DIR)
-    return _adapter_instance
+    if provider in ("s3", "cloudflare", "r2"):
+        if not settings.S3_BUCKET_NAME:
+            raise RuntimeError(
+                f"STORAGE_PROVIDER is '{settings.STORAGE_PROVIDER}', but S3_BUCKET_NAME is not configured."
+            )
+        # S3StorageAdapter will raise directly if boto3 is missing or configuration is invalid.
+        # Absolutely NO silent fallback to local disk.
+        _adapter_instance = S3StorageAdapter(
+            bucket_name=settings.S3_BUCKET_NAME,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            endpoint_url=settings.S3_ENDPOINT_URL,
+            region_name=settings.AWS_REGION or "auto",
+        )
+        return _adapter_instance
+
+    if provider == "local":
+        if (settings.ENVIRONMENT or "").strip().lower() == "production":
+            raise RuntimeError(
+                "STORAGE_PROVIDER='local' is forbidden in production environment to prevent "
+                "container disk overflow. Please configure Cloudflare R2 or S3."
+            )
+        _adapter_instance = LocalStorageAdapter(base_dir=settings.STORAGE_LOCAL_DIR)
+        return _adapter_instance
+
+    raise ValueError(
+        f"Invalid STORAGE_PROVIDER: '{settings.STORAGE_PROVIDER}'. "
+        "ApexFlow supports either 'local' (dev only) or 's3'/'cloudflare' (Cloudflare R2 / AWS S3)."
+    )
 
 
 class PayloadPolicyManager:

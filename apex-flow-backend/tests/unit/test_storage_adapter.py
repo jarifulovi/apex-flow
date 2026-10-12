@@ -60,3 +60,98 @@ async def test_payload_policy_manager_offload(tmp_path):
     assert PayloadPolicyManager.is_ref(ref) is True
     assert ref["$apexflow_ref"] is True
     assert ref["size_bytes"] > settings.PAYLOAD_MAX_INLINE_BYTES
+
+
+def test_storage_policy_local_in_dev(monkeypatch, tmp_path):
+    from app.adapters.storage.policy import get_storage_adapter, reset_storage_adapter
+    reset_storage_adapter()
+
+    monkeypatch.setattr(settings, "STORAGE_PROVIDER", "local")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "STORAGE_LOCAL_DIR", str(tmp_path))
+
+    adapter = get_storage_adapter()
+    assert isinstance(adapter, LocalStorageAdapter)
+    reset_storage_adapter()
+
+
+def test_storage_policy_local_forbidden_in_production(monkeypatch):
+    from app.adapters.storage.policy import get_storage_adapter, reset_storage_adapter
+    reset_storage_adapter()
+
+    monkeypatch.setattr(settings, "STORAGE_PROVIDER", "local")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+
+    with pytest.raises(RuntimeError, match="STORAGE_PROVIDER='local' is forbidden in production"):
+        get_storage_adapter()
+    reset_storage_adapter()
+
+
+def test_storage_policy_s3_missing_bucket_fails_fast_without_fallback(monkeypatch):
+    from app.adapters.storage.policy import get_storage_adapter, reset_storage_adapter
+    reset_storage_adapter()
+
+    monkeypatch.setattr(settings, "STORAGE_PROVIDER", "s3")
+    monkeypatch.setattr(settings, "S3_BUCKET_NAME", None)
+
+    # Must raise RuntimeError immediately and NOT silently fall back to local disk
+    with pytest.raises(RuntimeError, match="S3_BUCKET_NAME is not configured"):
+        get_storage_adapter()
+    reset_storage_adapter()
+
+
+def test_storage_policy_s3_valid_configuration(monkeypatch):
+    from app.adapters.storage.policy import get_storage_adapter, reset_storage_adapter
+    from app.adapters.storage.s3_adapter import S3StorageAdapter
+    reset_storage_adapter()
+
+    monkeypatch.setattr(settings, "STORAGE_PROVIDER", "s3")
+    monkeypatch.setattr(settings, "S3_BUCKET_NAME", "my-test-bucket")
+    monkeypatch.setattr(settings, "AWS_ACCESS_KEY_ID", "mock-access-key")
+    monkeypatch.setattr(settings, "AWS_SECRET_ACCESS_KEY", "mock-secret-key")
+    monkeypatch.setattr(settings, "S3_ENDPOINT_URL", "https://mock.r2.cloudflarestorage.com")
+
+    adapter = get_storage_adapter()
+    assert isinstance(adapter, S3StorageAdapter)
+    assert adapter.bucket_name == "my-test-bucket"
+    reset_storage_adapter()
+
+
+def test_storage_policy_cloudflare_alias(monkeypatch):
+    from app.adapters.storage.policy import get_storage_adapter, reset_storage_adapter
+    from app.adapters.storage.s3_adapter import S3StorageAdapter
+    reset_storage_adapter()
+
+    monkeypatch.setattr(settings, "STORAGE_PROVIDER", "cloudflare")
+    monkeypatch.setattr(settings, "S3_BUCKET_NAME", "r2-bucket")
+    monkeypatch.setattr(settings, "AWS_ACCESS_KEY_ID", "r2-key")
+    monkeypatch.setattr(settings, "AWS_SECRET_ACCESS_KEY", "r2-secret")
+
+    adapter = get_storage_adapter()
+    assert isinstance(adapter, S3StorageAdapter)
+    assert adapter.bucket_name == "r2-bucket"
+    reset_storage_adapter()
+
+
+def test_storage_policy_invalid_provider_raises_value_error(monkeypatch):
+    from app.adapters.storage.policy import get_storage_adapter, reset_storage_adapter
+    reset_storage_adapter()
+
+    monkeypatch.setattr(settings, "STORAGE_PROVIDER", "ftp_server")
+
+    with pytest.raises(ValueError, match="Invalid STORAGE_PROVIDER"):
+        get_storage_adapter()
+    reset_storage_adapter()
+
+
+@pytest.mark.asyncio
+async def test_s3_adapter_size_limit():
+    from app.adapters.storage.s3_adapter import S3StorageAdapter
+    adapter = S3StorageAdapter(
+        bucket_name="test-bucket",
+        aws_access_key_id="mock-key",
+        aws_secret_access_key="mock-secret",
+    )
+    oversized_content = b"x" * (settings.PAYLOAD_MAX_SINGLE_BYTES + 10)
+    with pytest.raises(ValueError, match="exceeds maximum single payload limit"):
+        await adapter.save("too_big.bin", oversized_content)
