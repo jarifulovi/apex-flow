@@ -336,8 +336,8 @@ export function PayloadViewerModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-2xl bg-[#12121a] border-white/10 text-zinc-100 shadow-2xl backdrop-blur-xl p-0 gap-0 overflow-hidden rounded-xl sm:max-w-2xl">
-        <DialogHeader className="p-4 bg-[#181824] border-b border-white/10 flex flex-row items-center justify-between space-y-0">
-          <div className="flex items-center gap-2">
+        <DialogHeader className="p-3.5 bg-[#181824] border-b border-white/10 flex flex-row items-center justify-between space-y-0">
+          <div className="flex items-center gap-2.5">
             <div className={`p-1.5 rounded-lg border ${
               isEncrypted
                 ? decryptedData !== null
@@ -348,98 +348,91 @@ export function PayloadViewerModal({
                 : "bg-zinc-800 border-white/10 text-zinc-400"
             }`}>
               {isEncrypted ? (
-                decryptedData !== null ? <ShieldCheck size={16} /> : <Lock size={16} />
+                decryptedData !== null ? <ShieldCheck size={15} /> : <Lock size={15} />
               ) : isOffloaded ? (
-                <Package size={16} />
+                <Package size={15} />
               ) : (
-                <FileCode2 size={16} />
+                <FileCode2 size={15} />
               )}
             </div>
+
             <div>
               <div className="flex items-center gap-2">
                 <DialogTitle className="text-sm font-semibold text-zinc-100">
                   {title}
                 </DialogTitle>
+
+                {isOffloaded && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-violet-500/10 border border-violet-500/30 text-violet-300">
+                    {offloadRef?.provider?.toUpperCase() || "STORAGE"} • {formattedSize || `${byteSize} B`}
+                  </span>
+                )}
+
                 {isEncrypted && (
-                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border flex items-center gap-1 ${
                     decryptedData !== null
                       ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
                       : "bg-amber-500/10 border-amber-500/30 text-amber-300"
                   }`}>
-                    {decryptedData !== null ? "DECRYPTED (AES-256)" : "ENCRYPTED (AES-GCM)"}
+                    {decryptedData !== null ? (
+                      <>
+                        <ShieldCheck size={10} />
+                        <span>AES-256</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock size={10} />
+                        <span>ENCRYPTED</span>
+                      </>
+                    )}
+                  </span>
+                )}
+
+                {activeKeyHint && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">
+                    #{activeKeyHint}
                   </span>
                 )}
               </div>
+
               <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
-                {isOffloaded
-                  ? `📦 Offloaded Storage (${formattedSize || byteSize + " B"})`
-                  : `${lineCount} ${lineCount === 1 ? "line" : "lines"} • ${byteSize} bytes`}
+                {lineCount} {lineCount === 1 ? "line" : "lines"} • {byteSize} bytes
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 mr-6">
-            {isOffloaded ? (
-              <>
-                {decryptedData !== null ? (
-                  <>
-                    <Button
-                      onClick={handleDownloadDecrypted}
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 gap-1.5"
-                    >
-                      <Download size={12} />
-                      <span>Decrypted JSON</span>
-                    </Button>
-                    <Button
-                      onClick={handleDownload}
-                      disabled={isDownloading}
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 gap-1.5"
-                      title="Download raw ciphertext file stored in Cloudflare R2 / S3"
-                    >
-                      {isDownloading ? <Loader2 size={12} className="animate-spin" /> : <HardDrive size={12} />}
-                      <span>Raw Cloud Blob</span>
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    onClick={handleDownload}
-                    disabled={isDownloading}
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 gap-1.5"
-                    title="Download raw ciphertext file stored in Cloudflare R2 / S3"
-                  >
-                    {isDownloading ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <Download size={12} />
-                    )}
-                    <span>Download Payload</span>
-                  </Button>
-                )}
-              </>
-            ) : (
-              isEncrypted && decryptedData !== null && (
-                <Button
-                  onClick={handleDownloadDecrypted}
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 gap-1.5"
-                >
-                  <Download size={12} />
-                  <span>Decrypted JSON</span>
-                </Button>
-              )
-            )}
+            {/* Download Action */}
+            {decryptedData !== null ? (
+              <Button
+                onClick={handleDownloadDecrypted}
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 gap-1.5"
+                title="Download decrypted JSON"
+              >
+                <Download size={12} />
+                <span>Decrypted JSON</span>
+              </Button>
+            ) : isOffloaded ? (
+              <Button
+                onClick={handleDownload}
+                disabled={isDownloading}
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 gap-1.5"
+                title="Download raw file from storage"
+              >
+                {isDownloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                <span>Download</span>
+              </Button>
+            ) : null}
 
+            {/* Pretty / Raw Switch */}
             <div className="flex items-center bg-[#0d0d14] rounded-lg p-0.5 border border-white/10">
               <button
                 onClick={() => setMode("pretty")}
-                className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                className={`px-2 py-0.5 text-[11px] font-medium rounded transition-colors ${
                   mode === "pretty"
                     ? "bg-violet-600 text-white shadow-sm"
                     : "text-zinc-400 hover:text-zinc-200"
@@ -449,7 +442,7 @@ export function PayloadViewerModal({
               </button>
               <button
                 onClick={() => setMode("raw")}
-                className={`px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+                className={`px-2 py-0.5 text-[11px] font-medium rounded transition-colors ${
                   mode === "raw"
                     ? "bg-violet-600 text-white shadow-sm"
                     : "text-zinc-400 hover:text-zinc-200"
@@ -459,16 +452,17 @@ export function PayloadViewerModal({
               </button>
             </div>
 
+            {/* Copy Button */}
             <Button
               onClick={handleCopy}
               variant="outline"
               size="sm"
-              className="h-7 text-xs bg-[#1b1b26] border-white/10 text-zinc-200 hover:text-white gap-1.5"
+              className="h-7 text-xs bg-[#1b1b26] border-white/10 text-zinc-200 hover:text-white gap-1 px-2.5"
             >
               {copied ? (
                 <>
                   <Check size={12} className="text-emerald-400" />
-                  <span className="text-emerald-400">Copied!</span>
+                  <span className="text-emerald-400">Copied</span>
                 </>
               ) : (
                 <>
@@ -480,116 +474,65 @@ export function PayloadViewerModal({
           </div>
         </DialogHeader>
 
-        {/* Offloaded Payload Header Banner */}
-        {isOffloaded && offloadRef && (
-          <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-200 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <HardDrive size={14} className="text-amber-400" />
-              <span>
-                Offloaded payload descriptor • Provider:{" "}
-                <strong className="text-amber-100 uppercase">{offloadRef.provider || "LOCAL"}</strong> •
-                Content: <code>{offloadRef.content_type || "application/octet-stream"}</code>
-                {offloadRef.encrypted && (
-                  <span className="ml-2 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-mono text-[10px]">
-                    ZERO-KNOWLEDGE ENCRYPTED
-                  </span>
-                )}
-              </span>
+        {/* Minimal inline unlock strip (only shown when encrypted & locked) */}
+        {isEncrypted && decryptedData === null && (
+          <div className="px-4 py-2 bg-amber-500/[0.04] border-b border-amber-500/20 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs text-amber-300/90 shrink-0">
+              <KeyRound size={13} className="text-amber-400" />
+              <span className="font-medium text-amber-200">Decryption Key</span>
+              {activeKeyHint && (
+                <span className="font-mono text-[10px] text-amber-400/70">({activeKeyHint})</span>
+              )}
             </div>
-            <span className="text-[11px] text-amber-400/80 font-mono">{formattedSize}</span>
-          </div>
-        )}
 
-        {/* E2EE Decryption Banner */}
-        {isEncrypted && (
-          <div className={`px-4 py-2.5 border-b text-xs flex flex-wrap items-center justify-between gap-2 ${
-            decryptedData !== null
-              ? "bg-emerald-950/20 border-emerald-500/20 text-emerald-200"
-              : "bg-amber-950/20 border-amber-500/20 text-amber-200"
-          }`}>
-            {decryptedData !== null ? (
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-2">
-                  <Unlock size={14} className="text-emerald-400" />
-                  <span>
-                    Payload decrypted client-side via <strong>AES-256-GCM</strong>
-                    {activeKeyHint && (
-                      <span className="ml-2 font-mono text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded text-emerald-300">
-                        Fingerprint: {activeKeyHint}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <Button
-                  onClick={handleForgetSessionKey}
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-[11px] text-zinc-400 hover:text-zinc-200 hover:bg-white/5"
-                >
-                  <Lock size={11} className="mr-1" /> Re-lock
-                </Button>
-              </div>
-            ) : (
-              <div className="w-full space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert size={15} className="text-amber-400" />
-                    <span className="font-medium text-amber-100">
-                      Zero-Knowledge Encrypted Payload
-                    </span>
-                    {activeKeyHint && (
-                      <span className="font-mono text-[10px] bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded text-amber-300">
-                        Fingerprint: {activeKeyHint}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[11px] text-zinc-400">
-                    Decrypted strictly inside your browser
-                  </span>
-                </div>
+            <div className="flex items-center gap-2 flex-1 max-w-sm ml-auto">
+              <Input
+                type="password"
+                placeholder="Enter passphrase..."
+                value={decryptionKey}
+                onChange={(e) => setDecryptionKey(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleDecryptWithKey(decryptionKey)}
+                className="h-7 bg-black/40 border-white/10 text-xs text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-1 focus-visible:ring-amber-500/50"
+              />
+              <Button
+                onClick={() => handleDecryptWithKey(decryptionKey)}
+                disabled={isDecrypting || !decryptionKey.trim()}
+                size="sm"
+                className="h-7 text-xs bg-amber-500 hover:bg-amber-400 text-black font-medium gap-1 px-3 shrink-0"
+              >
+                {isDecrypting ? <Loader2 size={12} className="animate-spin" /> : <Unlock size={12} />}
+                <span>Unlock</span>
+              </Button>
+            </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <KeyRound size={13} className="absolute left-2.5 top-2 text-zinc-500" />
-                    <Input
-                      type="password"
-                      placeholder="Enter decryption key or passphrase..."
-                      value={decryptionKey}
-                      onChange={(e) => setDecryptionKey(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleDecryptWithKey(decryptionKey)}
-                      className="h-7 pl-8 bg-black/40 border-white/10 text-xs text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-1 focus-visible:ring-amber-500/50"
-                    />
-                  </div>
-                  <Button
-                    onClick={() => handleDecryptWithKey(decryptionKey)}
-                    disabled={isDecrypting || !decryptionKey.trim()}
-                    size="sm"
-                    className="h-7 text-xs bg-amber-600 hover:bg-amber-500 text-black font-medium gap-1 px-3"
-                  >
-                    {isDecrypting ? <Loader2 size={12} className="animate-spin" /> : <Unlock size={12} />}
-                    <span>Decrypt</span>
-                  </Button>
-                </div>
-
-                {decryptionError && (
-                  <p className="text-[11px] text-rose-400 font-mono mt-1">
-                    ⚠️ {decryptionError}
-                  </p>
-                )}
-              </div>
+            {decryptionError && (
+              <span className="text-[11px] text-rose-400 font-mono shrink-0">⚠️ {decryptionError}</span>
             )}
           </div>
         )}
 
-        {/* Search bar inside modal */}
-        <div className="px-4 py-2 bg-[#14141f] border-b border-white/5 flex items-center gap-2">
-          <Search size={13} className="text-zinc-500" />
-          <Input
-            placeholder="Search payload fields or values..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-7 bg-transparent border-0 text-xs text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
-          />
+        {/* Compact search bar & lock toggle */}
+        <div className="px-4 py-1.5 bg-[#14141f] border-b border-white/5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-1">
+            <Search size={13} className="text-zinc-500 shrink-0" />
+            <Input
+              placeholder="Search fields or values..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-6 bg-transparent border-0 text-xs text-zinc-200 placeholder:text-zinc-500 focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
+            />
+          </div>
+
+          {isEncrypted && decryptedData !== null && (
+            <button
+              onClick={handleForgetSessionKey}
+              className="text-[11px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors px-2 py-0.5 rounded hover:bg-white/5 font-medium shrink-0"
+              title="Lock payload and clear key from session"
+            >
+              <Lock size={11} className="text-zinc-500" />
+              <span>Lock</span>
+            </button>
+          )}
         </div>
 
         {/* Code viewer box */}
