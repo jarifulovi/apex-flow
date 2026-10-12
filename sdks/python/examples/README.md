@@ -60,5 +60,35 @@ Demonstrates AI lead ingestion with worker step queues.
 
 ### Run:
 ```bash
-python sdks/python/examples/worker_example.py
+./run.sh lead
+```
+
+---
+
+## 📦 Walkthrough 3: Large Payload Offloading Demo
+
+File: [`large_payload_example.py`](file:///home/ovi/Desktop/Project/Web/apex-flow/sdks/python/examples/large_payload_example.py)
+
+Demonstrates automatic offloading of large step payloads ($> 250\text{ KB}$) to Cloudflare R2 / S3 or local disk storage via `StorageResolver`.
+
+### Run:
+```bash
+./run.sh large
+```
+
+---
+
+## 🔐 Walkthrough 4: Zero-Knowledge Payload Encryption (E2EE)
+
+File: [`encrypted_payload_example.py`](file:///home/ovi/Desktop/Project/Web/apex-flow/sdks/python/examples/encrypted_payload_example.py)
+
+Demonstrates end-to-end client-side authenticated AES-256-GCM encryption. Sensitive payroll, PII, and financial inputs/outputs are encrypted prior to network transmission.
+
+- **PostgreSQL / Storage Engine**: Stores only ciphertext envelopes (`$apexflow_encrypted: true`, `iv`, `ciphertext`, `key_hint`).
+- **Dashboard Inspection**: Decrypted client-side in the browser via Web Crypto API with instant lock/unlock UI.
+- **Crash Recovery**: Recovering workers with the matching encryption key automatically decrypt checkpoints and continue execution seamlessly.
+
+### Run:
+```bash
+./run.sh enc
 ```

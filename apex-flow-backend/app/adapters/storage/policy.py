@@ -101,6 +101,7 @@ class PayloadPolicyManager:
         content_type: str,
         filename: Optional[str] = None,
         provider: Optional[str] = None,
+        encrypted: bool = False,
     ) -> Dict[str, Any]:
         """Build canonical reference descriptor."""
         return {
@@ -110,6 +111,7 @@ class PayloadPolicyManager:
             "content_type": content_type,
             "filename": filename or storage_key.split("/")[-1],
             "provider": provider or settings.STORAGE_PROVIDER,
+            "encrypted": encrypted,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -125,6 +127,7 @@ class PayloadPolicyManager:
             return payload, False
 
         blob, content_type = cls.serialize_payload(payload)
+        is_enc = isinstance(payload, dict) and payload.get("$apexflow_encrypted") is True
         ext = ".json" if content_type == "application/json" else ".bin"
         unique_id = uuid.uuid4().hex[:12]
         key = f"{storage_prefix}/{datetime.now(timezone.utc).strftime('%Y%m%d')}_{unique_id}{ext}"
@@ -136,5 +139,6 @@ class PayloadPolicyManager:
             size_bytes=len(blob),
             content_type=content_type,
             provider="s3" if isinstance(adapter, S3StorageAdapter) else "local",
+            encrypted=is_enc,
         )
         return ref, True

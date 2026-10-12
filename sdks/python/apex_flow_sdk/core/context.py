@@ -1,8 +1,13 @@
 import asyncio
+import inspect
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from apex_flow_sdk.adapters.storage import StorageResolver
+from apex_flow_sdk.core.encryption import (
+    decrypt_if_encrypted,
+    encrypt_if_key_provided,
+)
 from apex_flow_sdk.core.exceptions import NonRetryableError, StepFailedError
 
 
@@ -49,7 +54,10 @@ class WorkflowContext:
                         resolved_out = await StorageResolver.resolve_payload(
                             self.client.http_client, self.client.base_url, out_payload
                         )
-                        val = resolved_out.get("result", resolved_out) if isinstance(resolved_out, dict) else resolved_out
+                        decrypted_out = decrypt_if_encrypted(
+                            resolved_out, getattr(self.client, "encryption_key", None)
+                        )
+                        val = decrypted_out.get("result", decrypted_out) if isinstance(decrypted_out, dict) else decrypted_out
                         if step_order is not None:
                             self.completed_checkpoints[(step_name, step_order)] = val
                         self.completed_checkpoints[step_name] = val
@@ -101,8 +109,11 @@ class WorkflowContext:
 
         if not step_id:
             raw_input = input_payload or {}
+            enc_input = encrypt_if_key_provided(
+                raw_input, getattr(self.client, "encryption_key", None)
+            )
             offloaded_input, _ = await StorageResolver.offload_if_needed(
-                self.client.http_client, self.client.base_url, raw_input
+                self.client.http_client, self.client.base_url, enc_input
             )
 
             step_payload = {
@@ -135,7 +146,6 @@ class WorkflowContext:
         last_exception: Optional[Exception] = None
         attempt = 0
 
-        import inspect
         sig = inspect.signature(fn)
         has_params = len(sig.parameters) > 0
         is_async = (
@@ -151,7 +161,10 @@ class WorkflowContext:
                     resolved_input = await StorageResolver.resolve_payload(
                         self.client.http_client, self.client.base_url, input_payload
                     )
-                    output = await fn(resolved_input) if is_async else fn(resolved_input)
+                    decrypted_input = decrypt_if_encrypted(
+                        resolved_input, getattr(self.client, "encryption_key", None)
+                    )
+                    output = await fn(decrypted_input) if is_async else fn(decrypted_input)
                 else:
                     output = await fn() if is_async else fn()
 
@@ -162,8 +175,11 @@ class WorkflowContext:
                 output_data = {}
                 if self.store_payloads and output is not None:
                     raw_output = output if isinstance(output, dict) else {"result": output}
+                    enc_output = encrypt_if_key_provided(
+                        raw_output, getattr(self.client, "encryption_key", None)
+                    )
                     offloaded, _ = await StorageResolver.offload_if_needed(
-                        self.client.http_client, self.client.base_url, raw_output
+                        self.client.http_client, self.client.base_url, enc_output
                     )
                     output_data = offloaded if isinstance(offloaded, dict) else {"result": offloaded}
 

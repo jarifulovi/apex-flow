@@ -15,6 +15,7 @@ pip install apex-flow-sdk
 ## ✨ Key Capabilities
 
 - 🔄 **Durable Checkpointing**: Steps are memoized on completion; workflow execution resumes at the exact failed step without re-executing completed steps.
+- 🔐 **Zero-Knowledge Payload Encryption (E2EE)**: Optional end-to-end authenticated AES-256-GCM client encryption (`encryption_key="secret"` or `APEXFLOW_ENCRYPTION_KEY`). PostgreSQL, Cloudflare R2, and control plane store only ciphertext. The Web dashboard decrypts payloads client-side in the browser via the Web Crypto API.
 - ⚡ **Transparent Large Payload Offloading (`StorageResolver`)**: Payloads $> 250\text{ KB}$ are automatically offloaded to object storage (S3/MinIO) or local storage fallback via `StorageResolver`. The SDK transparently dereferences `$apexflow_ref` pointers back into native dictionaries or bytes.
 - 🛡️ **Resilient Retries & Error Classification**: Configurable exponential backoff retries with immediate abort support for `NonRetryableError`.
 - 🌲 **Parent-Child Lineage**: Launch child workflows via `ctx.child_workflow(...)` while maintaining full parent-child execution tracking.
@@ -30,6 +31,7 @@ from apex_flow_sdk import ApexFlowClient, WorkflowContext
 client = ApexFlowClient(
     base_url="http://localhost:8000",
     project_key="af_live_your_project_key",
+    encryption_key="my-secret-passphrase",  # Optional: Zero-Knowledge E2EE
     worker_name="python-worker-01",
 )
 
@@ -63,6 +65,7 @@ cd examples
 ./run.sh ecom --fail # Failure simulation & retry demonstration
 ./run.sh sub         # Parent & child sub-workflow lineage demo
 ./run.sh large       # Large payload offloading demo (>250KB threshold)
+./run.sh enc         # Zero-Knowledge client-side encryption demo (AES-256-GCM)
 ```
 
 ---

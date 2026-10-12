@@ -26,11 +26,12 @@ print_usage() {
     echo "  subworkflow | sub         : Parent & Child Sub-Workflow Lineage Demo (--subworkflow)"
     echo "  lead        | worker      : AI Lead Ingestion & Worker Example (worker_example.py)"
     echo "  large       | payload     : Large Payload Offloading Demo (large_payload_example.py)"
+    echo "  enc         | encrypt     : Zero-Knowledge Payload Encryption Demo (encrypted_payload_example.py)"
     echo ""
     echo "Examples:"
     echo "  ./run.sh ecom"
     echo "  ./run.sh large"
-    echo "  ./run.sh subworkflow"
+    echo "  ./run.sh enc"
     echo "================================================="
 }
 
@@ -53,6 +54,10 @@ case "$OPTION" in
     large|payload)
         echo "Running Large Payload Offloading Example..."
         "$PYTHON_BIN" "$SCRIPT_DIR/large_payload_example.py" "$@"
+        ;;
+    enc|encrypt|crypto)
+        echo "Running Zero-Knowledge Payload Encryption Example..."
+        "$PYTHON_BIN" "$SCRIPT_DIR/encrypted_payload_example.py" "$@"
         ;;
     -h|--help|help)
         print_usage

@@ -24,6 +24,7 @@ class ApexFlowClient:
         self,
         base_url: Optional[str] = None,
         project_key: Optional[str] = None,
+        encryption_key: Optional[Union[str, bytes]] = None,
         worker_name: str = "python-worker",
         default_retries: int = 3,
         default_backoff_factor: float = 2.0,
@@ -33,6 +34,7 @@ class ApexFlowClient:
         resolved_url = base_url or os.getenv("APEXFLOW_BASE_URL") or "http://127.0.0.1:8000"
         self.base_url = resolved_url.rstrip("/")
         self.project_key = project_key or os.getenv("APEXFLOW_PROJECT_KEY")
+        self.encryption_key = encryption_key or os.getenv("APEXFLOW_ENCRYPTION_KEY")
         self.worker_name = worker_name
         self.default_retries = default_retries
         self.default_backoff_factor = default_backoff_factor

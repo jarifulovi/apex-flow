@@ -1,3 +1,4 @@
+import json
 import mimetypes
 import uuid
 from datetime import datetime, timezone
@@ -33,12 +34,22 @@ async def upload_file(
         stored_key = await adapter.save(key, content, content_type=content_type)
     except ValueError as e:
         raise HTTPException(status_code=413, detail=str(e))
-    
+
+    is_encrypted = False
+    if content_type == "application/json" or (file.filename and file.filename.endswith(".json")):
+        try:
+            parsed = json.loads(content.decode("utf-8"))
+            if isinstance(parsed, dict) and parsed.get("$apexflow_encrypted") is True:
+                is_encrypted = True
+        except Exception:
+            pass
+
     ref = PayloadPolicyManager.create_ref(
         storage_key=stored_key,
         size_bytes=len(content),
         content_type=content_type,
         filename=file.filename or "file",
+        encrypted=is_encrypted,
     )
     return ref
 
