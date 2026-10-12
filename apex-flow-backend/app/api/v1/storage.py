@@ -36,11 +36,13 @@ async def upload_file(
         raise HTTPException(status_code=413, detail=str(e))
 
     is_encrypted = False
+    key_hint = None
     if content_type == "application/json" or (file.filename and file.filename.endswith(".json")):
         try:
             parsed = json.loads(content.decode("utf-8"))
             if isinstance(parsed, dict) and parsed.get("$apexflow_encrypted") is True:
                 is_encrypted = True
+                key_hint = parsed.get("key_hint")
         except Exception:
             pass
 
@@ -50,6 +52,7 @@ async def upload_file(
         content_type=content_type,
         filename=file.filename or "file",
         encrypted=is_encrypted,
+        key_hint=key_hint,
     )
     return ref
 

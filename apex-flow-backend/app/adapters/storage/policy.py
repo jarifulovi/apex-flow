@@ -102,9 +102,10 @@ class PayloadPolicyManager:
         filename: Optional[str] = None,
         provider: Optional[str] = None,
         encrypted: bool = False,
+        key_hint: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Build canonical reference descriptor."""
-        return {
+        ref = {
             cls.REF_KEY: True,
             "key": storage_key,
             "size_bytes": size_bytes,
@@ -114,6 +115,9 @@ class PayloadPolicyManager:
             "encrypted": encrypted,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        if key_hint:
+            ref["key_hint"] = key_hint
+        return ref
 
     @classmethod
     async def process_and_offload_if_needed(
@@ -128,6 +132,7 @@ class PayloadPolicyManager:
 
         blob, content_type = cls.serialize_payload(payload)
         is_enc = isinstance(payload, dict) and payload.get("$apexflow_encrypted") is True
+        key_hint = payload.get("key_hint") if is_enc else None
         ext = ".json" if content_type == "application/json" else ".bin"
         unique_id = uuid.uuid4().hex[:12]
         key = f"{storage_prefix}/{datetime.now(timezone.utc).strftime('%Y%m%d')}_{unique_id}{ext}"
@@ -140,5 +145,6 @@ class PayloadPolicyManager:
             content_type=content_type,
             provider="s3" if isinstance(adapter, S3StorageAdapter) else "local",
             encrypted=is_enc,
+            key_hint=key_hint,
         )
         return ref, True

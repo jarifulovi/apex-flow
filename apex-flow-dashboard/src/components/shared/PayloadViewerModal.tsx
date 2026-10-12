@@ -109,18 +109,25 @@ export function PayloadViewerModal({
       filename?: string;
       provider?: string;
       encrypted?: boolean;
+      key_hint?: string;
     };
   }, [isOffloaded, payload]);
 
-  const isEncrypted = useMemo(() => {
+  const isDirectEncrypted = useMemo(() => {
     if (payload && typeof payload === "object") {
       return (payload as Record<string, unknown>).$apexflow_encrypted === true;
     }
     return false;
   }, [payload]);
 
-  const encryptedEnvelope = useMemo(() => {
-    if (!isEncrypted) return null;
+  const isOffloadedEncrypted = useMemo(() => {
+    return Boolean(isOffloaded && offloadRef?.encrypted === true);
+  }, [isOffloaded, offloadRef]);
+
+  const isEncrypted = isDirectEncrypted || isOffloadedEncrypted;
+
+  const directEnvelope = useMemo(() => {
+    if (!isDirectEncrypted) return null;
     return payload as {
       $apexflow_encrypted: boolean;
       alg?: string;
@@ -128,7 +135,13 @@ export function PayloadViewerModal({
       ciphertext: string;
       key_hint?: string;
     };
-  }, [isEncrypted, payload]);
+  }, [isDirectEncrypted, payload]);
+
+  const activeKeyHint = useMemo(() => {
+    if (directEnvelope?.key_hint) return directEnvelope.key_hint;
+    if (offloadRef?.key_hint) return offloadRef.key_hint;
+    return null;
+  }, [directEnvelope, offloadRef]);
 
   // Attempt automatic decryption if key is already in sessionStorage
   useEffect(() => {
@@ -137,27 +150,64 @@ export function PayloadViewerModal({
       setDecryptionError(null);
       return;
     }
-    if (isEncrypted && encryptedEnvelope) {
+    if (isEncrypted) {
       const savedKey = typeof window !== "undefined" ? sessionStorage.getItem("apexflow_e2ee_key") : null;
       if (savedKey) {
         setDecryptionKey(savedKey);
         handleDecryptWithKey(savedKey);
       }
     }
-  }, [isOpen, isEncrypted, encryptedEnvelope]);
+  }, [isOpen, isEncrypted]);
 
   const handleDecryptWithKey = async (keyToUse: string) => {
-    if (!encryptedEnvelope || !keyToUse.trim()) return;
+    if (!keyToUse.trim()) return;
     try {
       setIsDecrypting(true);
       setDecryptionError(null);
-      const res = await decryptPayloadWebCrypto(encryptedEnvelope, keyToUse.trim());
+
+      let envelopeToDecrypt: any = directEnvelope;
+
+      // If offloaded, fetch the encrypted JSON blob from durable storage first
+      if (isOffloadedEncrypted && offloadRef) {
+        const primaryUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+        const fallbackUrl = "https://apex-flow-backend-kt5d.onrender.com";
+        const supabase = createClient();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
+
+        const tokenParam = session?.access_token
+          ? `?token=${encodeURIComponent(session.access_token)}`
+          : "";
+
+        let res = await fetch(`${primaryUrl}/api/v1/storage/download/${offloadRef.key}${tokenParam}`, { headers });
+        if (!res.ok && res.status === 404 && primaryUrl.includes("localhost")) {
+          // If running localhost dashboard but workflow was offloaded to deployed Render S3 storage
+          res = await fetch(`${fallbackUrl}/api/v1/storage/download/${offloadRef.key}${tokenParam}`, { headers });
+        }
+
+        if (!res.ok) {
+          throw new Error(`Failed to download cloud payload (${res.status} ${res.statusText})`);
+        }
+        envelopeToDecrypt = await res.json();
+      }
+
+      if (!envelopeToDecrypt || !envelopeToDecrypt.iv || !envelopeToDecrypt.ciphertext) {
+        throw new Error("Payload envelope is missing IV or ciphertext.");
+      }
+
+      const res = await decryptPayloadWebCrypto(envelopeToDecrypt, keyToUse.trim());
       setDecryptedData(res);
       if (typeof window !== "undefined") {
         sessionStorage.setItem("apexflow_e2ee_key", keyToUse.trim());
       }
     } catch (err: any) {
-      setDecryptionError("Incorrect key or corrupted ciphertext.");
+      setDecryptionError(err?.message || "Incorrect key or corrupted ciphertext.");
     } finally {
       setIsDecrypting(false);
     }
@@ -211,7 +261,8 @@ export function PayloadViewerModal({
     if (!offloadRef || isDownloading) return;
     try {
       setIsDownloading(true);
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const primaryUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const fallbackUrl = "https://apex-flow-backend-kt5d.onrender.com";
       const supabase = createClient();
       const {
         data: { session },
@@ -225,9 +276,12 @@ export function PayloadViewerModal({
       const tokenParam = session?.access_token
         ? `?token=${encodeURIComponent(session.access_token)}`
         : "";
-      const downloadUrl = `${backendUrl}/api/v1/storage/download/${offloadRef.key}${tokenParam}`;
 
-      const res = await fetch(downloadUrl, { headers });
+      let res = await fetch(`${primaryUrl}/api/v1/storage/download/${offloadRef.key}${tokenParam}`, { headers });
+      if (!res.ok && res.status === 404 && primaryUrl.includes("localhost")) {
+        res = await fetch(`${fallbackUrl}/api/v1/storage/download/${offloadRef.key}${tokenParam}`, { headers });
+      }
+
       if (!res.ok) {
         throw new Error(`Download failed with status ${res.status}`);
       }
@@ -245,6 +299,25 @@ export function PayloadViewerModal({
       console.error("Failed to download payload:", err);
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleDownloadDecrypted = () => {
+    if (!decryptedData) return;
+    try {
+      const jsonStr = JSON.stringify(decryptedData, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      const baseName = (offloadRef?.filename || "payload").replace(/\.json$/, "");
+      link.download = `${baseName}_decrypted.json`;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(blobUrl);
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Failed to download decrypted payload:", err);
     }
   };
 
@@ -306,21 +379,61 @@ export function PayloadViewerModal({
           </div>
 
           <div className="flex items-center gap-2 mr-6">
-            {isOffloaded && (
-              <Button
-                onClick={handleDownload}
-                disabled={isDownloading}
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 gap-1.5"
-              >
-                {isDownloading ? (
-                  <Loader2 size={12} className="animate-spin" />
+            {isOffloaded ? (
+              <>
+                {decryptedData !== null ? (
+                  <>
+                    <Button
+                      onClick={handleDownloadDecrypted}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 gap-1.5"
+                    >
+                      <Download size={12} />
+                      <span>Decrypted JSON</span>
+                    </Button>
+                    <Button
+                      onClick={handleDownload}
+                      disabled={isDownloading}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 gap-1.5"
+                      title="Download raw ciphertext file stored in Cloudflare R2 / S3"
+                    >
+                      {isDownloading ? <Loader2 size={12} className="animate-spin" /> : <HardDrive size={12} />}
+                      <span>Raw Cloud Blob</span>
+                    </Button>
+                  </>
                 ) : (
-                  <Download size={12} />
+                  <Button
+                    onClick={handleDownload}
+                    disabled={isDownloading}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 gap-1.5"
+                    title="Download raw ciphertext file stored in Cloudflare R2 / S3"
+                  >
+                    {isDownloading ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <Download size={12} />
+                    )}
+                    <span>Download Payload</span>
+                  </Button>
                 )}
-                <span>{isDownloading ? "Downloading..." : "Download Payload"}</span>
-              </Button>
+              </>
+            ) : (
+              isEncrypted && decryptedData !== null && (
+                <Button
+                  onClick={handleDownloadDecrypted}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 gap-1.5"
+                >
+                  <Download size={12} />
+                  <span>Decrypted JSON</span>
+                </Button>
+              )
             )}
 
             <div className="flex items-center bg-[#0d0d14] rounded-lg p-0.5 border border-white/10">
@@ -400,9 +513,9 @@ export function PayloadViewerModal({
                   <Unlock size={14} className="text-emerald-400" />
                   <span>
                     Payload decrypted client-side via <strong>AES-256-GCM</strong>
-                    {encryptedEnvelope?.key_hint && (
+                    {activeKeyHint && (
                       <span className="ml-2 font-mono text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded text-emerald-300">
-                        Fingerprint: {encryptedEnvelope.key_hint}
+                        Fingerprint: {activeKeyHint}
                       </span>
                     )}
                   </span>
@@ -424,9 +537,9 @@ export function PayloadViewerModal({
                     <span className="font-medium text-amber-100">
                       Zero-Knowledge Encrypted Payload
                     </span>
-                    {encryptedEnvelope?.key_hint && (
+                    {activeKeyHint && (
                       <span className="font-mono text-[10px] bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded text-amber-300">
-                        Fingerprint: {encryptedEnvelope.key_hint}
+                        Fingerprint: {activeKeyHint}
                       </span>
                     )}
                   </div>

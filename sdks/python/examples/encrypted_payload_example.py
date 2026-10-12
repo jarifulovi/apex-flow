@@ -66,7 +66,36 @@ async def confidential_payroll_pipeline(ctx: WorkflowContext, input_data: dict):
         input_payload=employee_data,
     )
     print(f"  ✅ [Step 2 Completed] Net disbursement calculated: ${disbursement['net_disbursement']:,.2f}")
-    return disbursement
+
+    # Step 3: Archive massive confidential payroll audit vault (> 250 KB)
+    # Automatically triggers BOTH Zero-Knowledge Encryption AND Cloud Provider offloading!
+    async def archive_bulk_audit_vault():
+        print("  ⚡ [Step 3] Generating 1,200 confidential compensation audit records (~360 KB)...")
+        records = [
+            {
+                "audit_id": f"AUD-2026-{i:05d}",
+                "employee_id": f"EMP-{(1000 + i % 300)}",
+                "tax_id": f"987-{i % 100:02d}-{(i * 73) % 10000:04d}",
+                "disbursement_usd": 120000.0 + (i * 35.25),
+                "routing_number": f"FED-ACH-{(10000000 + i * 19):09d}",
+                "classification": "RESTRICTED_PII_OFFLOADED_VAULT",
+                "audit_note": "Zero-knowledge authenticated AES-256-GCM ciphertext offloaded to Cloudflare R2 / S3.",
+            }
+            for i in range(1200)
+        ]
+        return {
+            "vault_batch": "PAYROLL-VAULT-2026-FINAL",
+            "record_count": len(records),
+            "records": records,
+        }
+
+    archived_vault = await ctx.step(
+        "archive_bulk_audit_vault",
+        archive_bulk_audit_vault,
+        input_payload={"vault_tier": "cold_storage_r2", "target_records": 1200},
+    )
+    print(f"  ✅ [Step 3 Completed] Archived {archived_vault['record_count']} confidential records locally.")
+    return archived_vault
 
 
 async def main():
@@ -88,10 +117,10 @@ async def main():
     ctx = WorkflowContext(workflow_run_id=run_id, client=client)
     result = await confidential_payroll_pipeline(ctx, {"batch": "2026-Q4"})
 
-    # 3. Inspect control plane database state to prove zero-knowledge storage
-    print("\n3️⃣ Inspecting Control Plane DB state (what PostgreSQL & Cloudflare R2 see)...")
+    # 3. Inspect control plane database state & cloud storage object to prove zero-knowledge storage
+    print("\n3️⃣ Inspecting Control Plane DB & Cloud Storage state...")
     headers = {"X-ApexFlow-Project-Key": client.project_key} if client.project_key else {}
-    async with httpx.AsyncClient(timeout=10.0, headers=headers) as http:
+    async with httpx.AsyncClient(timeout=15.0, headers=headers) as http:
         run_res = await http.get(f"{client.base_url}/api/v1/workflows/{run_id}")
         run_res.raise_for_status()
         run_detail = run_res.json()
@@ -104,28 +133,58 @@ async def main():
 
             is_enc_in = isinstance(in_p, dict) and in_p.get("$apexflow_encrypted") is True
             is_enc_out = isinstance(out_p, dict) and out_p.get("$apexflow_encrypted") is True
+            is_ref_out = isinstance(out_p, dict) and out_p.get("$apexflow_ref") is True
 
             print(f"\n  • Step '{s_name}': status={step['status']}")
-            print(f"    Input Payload (Stored in DB):")
-            print(f"      Encrypted: {is_enc_in}")
+            print(f"    Input Payload (PostgreSQL DB):")
             if is_enc_in:
                 print(f"      Ciphertext Preview: {in_p.get('ciphertext')[:36]}... [Algorithm: {in_p.get('alg')}]")
             else:
                 print(f"      Raw Data: {in_p}")
 
-            print(f"    Output Payload (Stored in DB):")
-            print(f"      Encrypted: {is_enc_out}")
+            print(f"    Output Payload (PostgreSQL DB):")
             if is_enc_out:
                 print(f"      Ciphertext Preview: {out_p.get('ciphertext')[:36]}... [Algorithm: {out_p.get('alg')}]")
-                print(f"      Key Hint: {out_p.get('key_hint')} (SSN and salary are completely hidden from server!)")
+                print(f"      Key Hint Fingerprint: {out_p.get('key_hint')}")
+            elif is_ref_out:
+                print(f"      📦 OFFLOADED TO CLOUD STORAGE (Threshold > 250KB triggered!)")
+                print(f"      Descriptor Key: {out_p.get('key')}")
+                print(f"      Provider: {out_p.get('provider')} | Size: {out_p.get('size_bytes'):,} bytes (~{out_p.get('size_bytes')/1024:.1f} KB)")
+                print(f"      Descriptor Encrypted Flag: {out_p.get('encrypted')} | Key Hint: {out_p.get('key_hint')}")
+
+                # 4. Fetch the raw cloud object directly from storage to inspect its actual bytes in the bucket
+                storage_url = f"{client.base_url}/api/v1/storage/download/{out_p['key']}"
+                cloud_file_res = await http.get(storage_url)
+                if cloud_file_res.status_code == 200:
+                    cloud_json = cloud_file_res.json()
+                    is_cloud_blob_enc = isinstance(cloud_json, dict) and cloud_json.get("$apexflow_encrypted") is True
+                    print(f"\n    ☁️  RAW CLOUD BUCKET INSPECTION ({out_p.get('provider', 'S3').upper()} Object Content):")
+                    print(f"      Object in Cloud Provider is Encrypted: {is_cloud_blob_enc}")
+                    print(f"      Ciphertext Preview in Bucket: {cloud_json.get('ciphertext')[:40]}...")
+                    print(f"      Plaintext 'records' visible to Cloud Provider: {'records' in cloud_json} (100% Zero-Knowledge!)")
+
+                # 5. Test local worker decryption via StorageResolver
+                from apex_flow_sdk.adapters.storage import StorageResolver
+                from apex_flow_sdk.core.encryption import decrypt_if_encrypted
+                resolved_blob = await StorageResolver.resolve_payload(client.http_client, client.base_url, out_p)
+                decrypted_blob = decrypt_if_encrypted(resolved_blob, client.encryption_key)
+                rec_count = len(decrypted_blob.get("records", [])) if isinstance(decrypted_blob, dict) else 0
+                print(f"      Worker Decryption Test: Decrypted {rec_count:,} records in memory successfully!")
             else:
                 print(f"      Raw Data: {out_p}")
 
-    print("\n=========================================================")
-    print("🎉 Zero-Knowledge Encryption Demo Completed Successfully!")
-    print("   Open your ApexFlow Dashboard to inspect the payload.")
-    print(f"   Use decryption passphrase: '{ENCRYPTION_KEY}'")
-    print("=========================================================")
+    print("\n================================================================================")
+    print("🎉 Zero-Knowledge File Storage & Encryption Demo Completed Successfully!")
+    print("================================================================================")
+    print(f"👉 How to manually verify in your Dashboard:")
+    print(f"   1. Open: http://localhost:3000/dashboard/workflows/{run_id}")
+    print(f"   2. View Step 3 ('archive_bulk_audit_vault') and click 'View Payload'.")
+    print(f"   3. Click 'Download Payload' -> You will download the RAW cloud JSON file.")
+    print(f"      Open it in any text editor -> Notice it is 100% ciphertext (zero plaintext).")
+    print(f"   4. Enter your passphrase '{ENCRYPTION_KEY}' into the modal and click 'Decrypt'.")
+    print(f"      The modal will decrypt the 1,200 records client-side in your browser!")
+    print(f"   5. Click 'Decrypted JSON' to download the decrypted plain records.")
+    print("================================================================================")
 
 
 if __name__ == "__main__":
