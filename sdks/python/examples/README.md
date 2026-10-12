@@ -92,3 +92,22 @@ Demonstrates end-to-end client-side authenticated AES-256-GCM encryption. Sensit
 ```bash
 ./run.sh enc
 ```
+
+---
+
+## 💓 Walkthrough 5: Worker Heartbeat Monitoring Demo
+
+File: [`worker_heartbeat_example.py`](file:///home/ovi/Desktop/Project/Web/apex-flow/sdks/python/examples/worker_heartbeat_example.py)
+
+Demonstrates live worker heartbeat registration and continuous liveness monitoring.
+
+- **Control Plane**: Registers worker via `POST /api/v1/workers/heartbeat` and updates `last_heartbeat`.
+- **Dashboard UI**: Displays live `ONLINE` pulse indicator and relative heartbeat times in the **Execution Workers** view (`/dashboard/workers`).
+- **Offline Transition**: Demonstrates automatic status transition to `OFFLINE` if heartbeats stop for >60 seconds.
+
+### Run:
+```bash
+./run.sh heartbeat
+# Or shorthand:
+./run.sh hb
+```

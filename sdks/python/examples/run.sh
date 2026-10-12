@@ -27,11 +27,13 @@ print_usage() {
     echo "  lead        | worker      : AI Lead Ingestion & Worker Example (worker_example.py)"
     echo "  large       | payload     : Large Payload Offloading Demo (large_payload_example.py)"
     echo "  enc         | encrypt     : Zero-Knowledge Payload Encryption Demo (encrypted_payload_example.py)"
+    echo "  heartbeat   | hb          : Worker Heartbeat Monitoring Demo (worker_heartbeat_example.py)"
     echo ""
     echo "Examples:"
     echo "  ./run.sh ecom"
     echo "  ./run.sh large"
     echo "  ./run.sh enc"
+    echo "  ./run.sh heartbeat"
     echo "================================================="
 }
 
@@ -58,6 +60,10 @@ case "$OPTION" in
     enc|encrypt|crypto)
         echo "Running Zero-Knowledge Payload Encryption Example..."
         "$PYTHON_BIN" "$SCRIPT_DIR/encrypted_payload_example.py" "$@"
+        ;;
+    heartbeat|hb)
+        echo "Running Worker Heartbeat Monitoring Example..."
+        "$PYTHON_BIN" "$SCRIPT_DIR/worker_heartbeat_example.py" "$@"
         ;;
     -h|--help|help)
         print_usage
