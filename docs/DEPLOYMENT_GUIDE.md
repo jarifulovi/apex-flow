@@ -147,6 +147,7 @@ Output will confirm:
 - [ ] **HTTPS/TLS**: Ensure backend and dashboard URLs use `https://`.
 - [ ] **CORS Configuration**: Verify FastAPI CORS middleware allows dashboard origin.
 - [ ] **API Keys**: Generate production project API keys via the dashboard UI or `/api/v1/keys` endpoint.
+- [ ] **Zero-Knowledge Payload Encryption (Optional)**: If workflows process sensitive customer data, set `APEXFLOW_ENCRYPTION_KEY="your-secret-passphrase"` on worker nodes. All database rows and cloud storage objects remain encrypted at rest, decryptable only in the dashboard with the client passphrase.
 - [ ] **SDK Configuration**: Update worker SDK configuration to point to production backend:
   ```python
   from apex_flow_sdk import ApexFlowClient

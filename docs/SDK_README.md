@@ -36,10 +36,11 @@ The SDK is **not merely a thin HTTP wrapper** for the control plane. It encapsul
        └─────────────────────────────────────────────────────────────┘
 ```
 
-### 1. Durable Checkpointing & Execution Resumption
+### 1. Durable Checkpointing & Loop-Safe Step Identity
 - Before executing a step, the SDK queries the control plane or local memory for existing execution checkpoints.
 - If a step was successfully executed during a prior attempt, the SDK **skips re-executing the step function** and immediately returns the memoized result.
-- If a worker crashes on Step 3 of a 5-step pipeline, a new worker instance resuming the workflow skips Steps 1 and 2 automatically, resuming execution directly at Step 3.
+- **Loop-Safe Execution (`(step_name, step_order)`)**: Step caches and memoization keys are uniquely scoped to `(step_name, step_order)`. Invoking the same step function inside a `for` or `while` loop produces distinct, sequenced execution checkpoints rather than colliding on the first iteration.
+- If a worker crashes mid-workflow, a resuming worker skips completed steps and resumes precisely at the first uncompleted step.
 
 ### 2. Resilient Network HTTP Client & Full Jitter Backoff
 - All SDK network requests (`trigger_workflow`, `complete_workflow`, `report_step`, `poll_next_step`, `upload_payload`, `download_payload`) execute through a resilient HTTP wrapper (`_request_with_retry`).
@@ -81,12 +82,40 @@ The SDK is **not merely a thin HTTP wrapper** for the control plane. It encapsul
     "key": "payloads/20261005_abcdef123.json",
     "size_bytes": 1048576,
     "content_type": "application/json",
-    "provider": "s3"
+    "provider": "s3",
+    "encrypted": false
   }
   ```
 - **Dereferencing**: When acquiring steps or loading step checkpoints, the SDK transparently dereferences `$apexflow_ref` pointers back into native dictionaries or bytes via `GET /api/v1/storage/download/{key}`, ensuring developer step code never needs explicit S3 API logic.
 - **Pass-by-Reference ($> 2\text{ MB}$)**: Raw binary payloads exceeding $2\text{ MB}$ are rejected by the control plane with `HTTP 413 Payload Too Large`. For datasets or files $>2\text{ MB}$, workers upload data directly to their S3 bucket and pass reference URIs (`s3://...`) into step arguments.
 
+### 10. Rich Object & Pydantic Serialization
+- The SDK includes built-in normalization (`serialization.py` / `to_jsonable`) that recursively converts complex Python objects before transmission or offloading:
+  - **Pydantic Models** (v1 `dict()` and v2 `model_dump()`)
+  - **Python Dataclasses** (`dataclasses.asdict()`)
+  - **Temporal Types** (`datetime`, `date`, `time` to ISO-8601 strings)
+  - **Identifiers & Numerics** (`UUID`, `Decimal`, `Enum`)
+  - **Collections & Paths** (`set`, `frozenset`, `Path`)
+
+### 11. Zero-Knowledge Client-Side Payload Encryption (E2EE)
+- Optional client-side authenticated AES-256-GCM encryption enabled via `encryption_key="secret"` or `APEXFLOW_ENCRYPTION_KEY` environment variable.
+- **Zero-Knowledge Guarantee**: Payloads are encrypted *before* transmission over HTTP or upload to Cloudflare R2 / S3. The control plane database and cloud storage store only ciphertext envelopes:
+  ```json
+  {
+    "$apexflow_encrypted": true,
+    "alg": "AES-256-GCM",
+    "iv": "<base64>",
+    "ciphertext": "<base64>"
+  }
+  ```
+- **Web Dashboard Decryption**: The Next.js dashboard decrypts payloads client-side in the browser using the Web Crypto API (`SubtleCrypto`). Passphrases never leave the client.
+
+### 12. Advanced Flow Control & Scheduling
+- **Delayed Step Execution (`delay_seconds`)**: Steps can declare `delay_seconds`, hiding them from worker queue polling until `available_at` timestamp matures.
+- **Priority Queuing (`priority`)**: Steps accept an integer `priority` (default `0`), dequeued in ascending order (`0` = highest priority) to protect against starvation from bulk batch jobs.
+- **Workflow-Level Deadlines (`timeout_seconds`)**: Workflows can declare run timeouts; runs exceeding `deadline_at` are automatically failed and orphan steps cancelled.
+- **Event Debouncing (`debounce_seconds`, `max_debounce_seconds`)**: Coalesces rapid triggers sharing the same `deduplication_id` within a sliding window into a single execution.
+- **Time-Travel Debugging & Forking (`fork_workflow`)**: Clones workflow execution state up to step $N-1$ and launches a new branch from step $N$.
 
 ---
 
@@ -101,22 +130,25 @@ All language SDKs communicate with the backend control plane via HTTP REST endpo
 ### Protocol Interaction Map:
 
 1. **Trigger Workflow**: `POST /api/v1/workflows`
-   - *Payload*: `{"workflow_name": "<name>", "metadata": {...}, "deduplication_id": "...", "parent_workflow_id": "..."}`
-   - *Returns*: Workflow run metadata (`id`, `status`).
+   - *Payload*: `{"workflow_name": "<name>", "metadata": {...}, "deduplication_id": "...", "parent_workflow_id": "...", "timeout_seconds": 60, "debounce_seconds": 10}`
+   - *Returns*: Workflow run metadata (`id`, `status`, `deadline_at`, `debounced_until`).
 
-2. **Queue Step**: `POST /api/v1/steps`
-   - *Payload*: `{"workflow_id": "<uuid>", "step_name": "<name>", "step_order": 1, "input_payload": {...}}`
-   - *Returns*: Queued step metadata (`id`, `status`).
+2. **Fork Workflow**: `POST /api/v1/workflows/{id}/fork?from_step=N`
+   - *Returns*: Cloned workflow run with prior step checkpoints memoized and step $N$ queued.
 
-3. **Poll Step**: `POST /api/v1/steps/poll`
+3. **Queue Step**: `POST /api/v1/steps`
+   - *Payload*: `{"workflow_id": "<uuid>", "step_name": "<name>", "step_order": 1, "input_payload": {...}, "delay_seconds": 0, "priority": 0}`
+   - *Returns*: Queued step metadata (`id`, `status`, `available_at`, `priority`).
+
+4. **Poll Step**: `POST /api/v1/steps/poll`
    - *Payload*: `{"worker_name": "...", "worker_id": "...", "step_names": [...]}`
-   - *Returns*: Next available step payload or `204 No Content`.
+   - *Returns*: Next available step payload (matching `available_at <= now()`, ordered by priority) or `204 No Content`.
 
-4. **Report Step Status**: `POST /api/v1/steps/report`
-   - *Payload*: `{"step_id": "<uuid>", "status": "success" | "failed", "output_payload": {...}, "error_message": "..."}`
-   - *Returns*: Updated step status.
+5. **Report Step Status**: `POST /api/v1/steps/report`
+   - *Payload*: `{"step_id": "<uuid>", "status": "success" | "failed", "output_payload": {...}, "error_message": "...", "retry_delay_seconds": 5}`
+   - *Returns*: Updated step status (re-scheduled via exponential backoff if retrying).
 
-5. **Complete Workflow**: `POST /api/v1/workflows/{id}/complete`
+6. **Complete Workflow**: `POST /api/v1/workflows/{id}/complete`
    - *Returns*: Final workflow status (`completed`).
 
 ---

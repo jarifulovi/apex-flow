@@ -74,10 +74,12 @@ The database engine (`app/core/database.py`) is engineered for production stabil
 - **`pool_recycle=1800`**: Recycles database connections every 30 minutes to prevent firewall or PostgreSQL server-side connection timeout drops.
 - **Connection Pool Tuning**: Configures `pool_size=20` and `max_overflow=10` for high concurrency without PostgreSQL connection exhaustion.
 
-### 2. High-Throughput Scoped Queue Polling (`QueueService`)
+### 2. High-Throughput Scoped Queue Polling & Scheduling (`QueueService`)
 - Uses dialect-aware PostgreSQL `SELECT FOR UPDATE OF WorkflowStep SKIP LOCKED`.
-- Scoping row locks strictly to `workflow_steps` prevents table-level lock contention, allowing concurrent workers to poll and execute steps for the same or different workflow runs in parallel.
-- Automatically recovers stale step leases (`recover_stale_locks`) if a worker process crashes or loses network connectivity mid-execution.
+- **Scheduled & Priority Dequeuing**: Filters steps by `available_at <= now()` and orders queue pickup by `priority ASC, available_at ASC, created_at ASC`, ensuring high-priority steps run first while respecting delayed step schedules.
+- **Lease & Timeout Recovery**:
+  - `recover_stale_locks`: Automatically recovers stale step leases (`locked_until < now()`) when worker nodes crash.
+  - `recover_timed_out_workflows`: Detects workflow runs exceeding `deadline_at` (`timeout_seconds`), transitions the run to `failed`, and cancels pending/running child steps.
 
 ### 3. Cascading Parent-Child Workflow Lifecycle (`WorkflowService`)
 The backend provides automatic sub-tree lifecycle management for hierarchical workflows:
@@ -97,20 +99,29 @@ To maintain database performance and prevent `jsonb` table bloat:
     "size_bytes": 1048576,
     "content_type": "application/json",
     "provider": "s3",
+    "encrypted": false,
     "created_at": "2026-10-05T19:00:00Z"
   }
   ```
-- **Pass-by-Reference ($> 2\text{ MB}$)**: Payloads exceeding the 2MB control-plane ceiling are rejected with `HTTP 413 Payload Too Large`. Users pass S3 URIs (`s3://...`) directly in step parameters to avoid control plane bandwidth and memory overhead.
+- **Zero-Knowledge Ciphertext Envelopes**: When client-side AES-256-GCM encryption is used, the control plane flags `encrypted: true` in the storage descriptor without holding or needing decryption keys.
+- **Pass-by-Reference ($> 2\text{ MB}$)**: Payloads exceeding the 2MB control-plane ceiling are rejected with `HTTP 413 Payload Too Large`. Users pass S3 URIs (`s3://...`) directly in step parameters.
 
-### 5. Fast $O(1)$ Step Status Reporting & Explicit SDK Completion
-- Step execution reporting (`POST /api/v1/steps/report`) performs fast $O(1)$ status writes without expensive database subqueries or status guessing.
-- Workflow run completion is triggered explicitly by the SDK (`POST /api/v1/workflows/{id}/complete`) when top-level workflow code finishes, avoiding premature status flips.
+### 5. Server-Scheduled Retries & Flow Control
+- **Exponential Backoff**: When a step reports a retryable failure, the control plane calculates exponential backoff:
+  $$T_{\text{delay}} = 2^{\text{attempt}-1} \text{ seconds}$$
+  and sets `available_at = now() + T_{\text{delay}}` (or honors explicit `retry_delay_seconds`), persisting retry state durably in PostgreSQL even if the worker dies.
+- **Step Execution Delays (`delay_seconds`)**: Steps can specify initial dispatch delays before becoming visible to dequeuers.
 
-### 6. Idempotency & Deduplication Engine
-- Supports optional `deduplication_id` on workflow creation (`POST /api/v1/workflows`).
-- Enforces database-level idempotency via a filtered unique index (`idx_workflow_runs_dedup`), returning active workflow runs immediately if a duplicate trigger request is received.
+### 6. Time-Travel Debugging via Workflow Forking (`WorkflowService`)
+- Developers can branch a new workflow from any point in an existing run (`POST /api/v1/workflows/{id}/fork?from_step=N`).
+- Prior step outputs ($1 \dots N-1$) are cloned and memoized into the new run. Step $N$ is placed into `queued` state for execution.
+- Lineage is preserved via `forked_from_id`, enabling auditability and iterative local debugging of production failures.
 
-### 7. Database Retention Strategy (`pg-cron`)
+### 7. Trigger Debouncing & Event Coalescing
+- High-frequency triggers sharing a `deduplication_id` can specify `debounce_seconds` (and optional `max_debounce_seconds`).
+- Subsequent events arriving within the window merge metadata and extend `debounced_until` (capped at `debounce_deadline_at`), executing the workflow once when quiet.
+
+### 8. Database Retention Strategy (`pg-cron`)
 To prevent database storage bloating on PostgreSQL databases:
 - **Soft Payload Pruning** (`prune_old_payloads`): Daily at 02:00 AM UTC, clears JSON payloads (`{}`) for completed runs older than 7 days, reducing disk usage by 90%+ while preserving run telemetry metrics for 30 days.
 - **Hard Batched Delete** (`prune_old_workflow_runs_batched`): Daily at 03:00 AM UTC, deletes terminal runs older than 30 days in non-blocking batches of 2,000 rows.
@@ -159,14 +170,15 @@ The backend control plane enforces a **Two-Layer Authentication Model** (`app/ap
 | `/api/v1/keys` | `POST` | Supabase JWT | Create a new project API key (`raw_key` returned once). |
 | `/api/v1/keys` | `GET` | Supabase JWT | List user's active & revoked project API keys. |
 | `/api/v1/keys/{key_id}` | `DELETE` | Supabase JWT | Revoke a project API key by ID. |
-| `/api/v1/workflows` | `POST` | Project API Key | Create or deduplicate a workflow run execution state. |
+| `/api/v1/workflows` | `POST` | Project API Key | Create, debounced buffer, or deduplicate a workflow run execution state. |
 | `/api/v1/workflows` | `GET` | Bearer / Key | List workflow runs (paginated & filtered). |
 | `/api/v1/workflows/{id}` | `GET` | Bearer / Key | Fetch workflow run detail and ordered step execution timeline. |
+| `/api/v1/workflows/{id}/fork` | `POST` | Bearer / Key | Fork workflow from step $N$ with prior checkpoints memoized. |
 | `/api/v1/workflows/{id}/complete` | `POST` | Project API Key | Mark workflow run completed upon SDK function completion. |
 | `/api/v1/workflows/{id}/cancel` | `POST` | Bearer / Key | Cancel active workflow run and mark queued steps cancelled. |
 | `/api/v1/workflows/{id}/restart` | `POST` | Bearer / Key | Reset failed/cancelled steps to queued and restart run. |
-| `/api/v1/steps` | `POST` | Project API Key | Queue a new step under a workflow run. |
-| `/api/v1/steps/poll` | `POST` | Project API Key | Poll next queued step using `FOR UPDATE SKIP LOCKED`. |
+| `/api/v1/steps` | `POST` | Project API Key | Queue a new step under a workflow run (with optional delay & priority). |
+| `/api/v1/steps/poll` | `POST` | Project API Key | Poll next queued step using `FOR UPDATE SKIP LOCKED` (priority & available_at). |
 | `/api/v1/steps/report` | `POST` | Project API Key | Report worker step execution result (`success` / `failed`). |
 | `/api/v1/storage/upload` | `POST` | Project API Key | Upload payload/file artifact and return `$apexflow_ref` descriptor. |
 | `/api/v1/storage/download/{key:path}` | `GET` | Bearer / Key | Stream binary content or offloaded JSON for a storage key. |
