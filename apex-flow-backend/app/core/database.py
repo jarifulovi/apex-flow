@@ -14,9 +14,9 @@ engine_kwargs = {
 # Apply connection pool settings for PostgreSQL
 if "postgresql" in settings.DATABASE_URL:
     engine_kwargs.update({
-        "pool_size": 20,
-        "max_overflow": 10,
-        "pool_recycle": 1800,
+        "pool_size": 5,
+        "max_overflow": 3,
+        "pool_recycle": 300,
         "pool_timeout": 30,
         "connect_args": {"statement_cache_size": 0, "prepared_statement_cache_size": 0},
     })

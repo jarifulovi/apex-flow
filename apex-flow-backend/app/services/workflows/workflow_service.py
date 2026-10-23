@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import and_, cast, func, or_, select, String, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -129,9 +130,36 @@ class WorkflowService:
             debounce_deadline_at=debounce_deadline,
         )
         db.add(workflow_run)
-        await db.commit()
-        await db.refresh(workflow_run)
-        return workflow_run
+        try:
+            await db.commit()
+            await db.refresh(workflow_run)
+            return workflow_run
+        except IntegrityError:
+            await db.rollback()
+            if payload.deduplication_id:
+                # Concurrent race condition: another trigger concurrently won the insert race.
+                stmt = select(WorkflowRun).where(
+                    WorkflowRun.project_id == target_project_id,
+                    WorkflowRun.deduplication_id == payload.deduplication_id,
+                )
+                res = await db.execute(stmt)
+                existing_run = res.scalar_one_or_none()
+                if existing_run:
+                    if payload.debounce_seconds and payload.debounce_seconds > 0:
+                        candidate_until = now + timedelta(seconds=payload.debounce_seconds)
+                        if existing_run.debounce_deadline_at:
+                            new_until = min(candidate_until, existing_run.debounce_deadline_at)
+                        else:
+                            new_until = candidate_until
+                        existing_run.debounced_until = new_until
+                        if payload.metadata:
+                            merged_meta = dict(existing_run.metadata_ or {})
+                            merged_meta.update(payload.metadata)
+                            existing_run.metadata_ = merged_meta
+                        await db.commit()
+                        await db.refresh(existing_run)
+                    return existing_run
+            raise
 
     @staticmethod
     async def list_workflow_runs(
