@@ -20,6 +20,8 @@ import {
   Database,
   Clock,
   CheckCircle2,
+  HeartHandshake,
+  Mail,
 } from "lucide-react";
 
 const CODE_SNIPPET = `from apex_flow_sdk import ApexFlowClient, WorkflowContext
@@ -470,27 +472,36 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Call to Action Banner */}
+      {/* Community, Contribution & Direct Help Banner */}
       <div className="landing-cta-banner">
         <div className="landing-cta-banner-glow" aria-hidden="true" />
-        <h2 className="landing-cta-banner-title">Ready to orchestrate durable workflows?</h2>
+        <div className="landing-section-badge mb-3 relative z-10">
+          <HeartHandshake size={14} className="text-violet-400" />
+          <span>Open Source & Community</span>
+        </div>
+        <h2 className="landing-cta-banner-title">Contribute, collaborate, or get direct help</h2>
         <p className="landing-cta-banner-desc">
-          Get started in seconds with a free account. Connect your workers via a single API key and ship
-          durable, resilient workflows with zero infrastructure overhead.
+          ApexFlow is 100% open source. Whether you want to contribute new language SDKs, report an edge case,
+          propose architectural improvements, or need direct help setting up workflows in your stack—I&apos;d love to connect.
         </p>
-        <div className="flex items-center gap-3 flex-wrap justify-center relative z-10">
-          <Link href="/auth/signup" className="landing-cta-primary">
-            Create Free Account
-            <ArrowRight size={16} />
-          </Link>
+        <div className="flex items-center gap-3.5 flex-wrap justify-center relative z-10">
+          <a
+            href="mailto:jarifulovi@gmail.com"
+            className="landing-cta-primary"
+            title="Send an email to jarifulovi@gmail.com"
+          >
+            <Mail size={16} />
+            <span>jarifulovi@gmail.com</span>
+          </a>
           <a
             href="https://github.com/jarifulovi/apex-flow"
             target="_blank"
             rel="noopener noreferrer"
             className="landing-cta-secondary"
+            title="Contribute on GitHub"
           >
-            <GithubIcon className="w-4 h-4 text-violet-400" />
-            Explore on GitHub
+            <GithubIcon className="w-4 h-4 text-violet-300" />
+            <span>Contribute on GitHub</span>
           </a>
         </div>
       </div>
