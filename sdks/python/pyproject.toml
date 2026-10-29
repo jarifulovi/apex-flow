@@ -28,7 +28,14 @@ classifiers = [
 dependencies = [
     "httpx>=0.27.0",
     "pydantic>=2.7.0",
+    "cryptography>=41.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jarifulovi/apex-flow"
+Documentation = "https://github.com/jarifulovi/apex-flow#readme"
+Repository = "https://github.com/jarifulovi/apex-flow"
+"Bug Tracker" = "https://github.com/jarifulovi/apex-flow/issues"
 
 [project.optional-dependencies]
 dev = [

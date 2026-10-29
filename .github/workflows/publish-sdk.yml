@@ -42,7 +42,6 @@ jobs:
           twine check dist/*
 
       - name: Publish Package to PyPI
-        continue-on-error: true  # Prevents pipeline failure if PyPI OIDC/Secret is not configured yet
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: sdks/python/dist
