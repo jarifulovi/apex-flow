@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,18 +18,22 @@ async def health_liveness():
 
 
 @router.get("/health/db", status_code=status.HTTP_200_OK)
-async def health_readiness(db: AsyncSession = Depends(get_db)):
+async def health_readiness(response: Response, db: AsyncSession = Depends(get_db)):
     """
     Detailed readiness probe verifying database connection health.
+    Returns HTTP 200 OK when online, or HTTP 503 Service Unavailable when DB is down.
     """
     db_status = "healthy"
+    system_status = "online"
     try:
         await db.execute(text("SELECT 1"))
     except Exception as e:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        system_status = "degraded"
         db_status = f"unhealthy: {str(e)}"
 
     return {
-        "status": "online",
+        "status": system_status,
         "project": settings.PROJECT_NAME,
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
