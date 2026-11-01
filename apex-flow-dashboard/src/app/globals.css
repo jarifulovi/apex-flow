@@ -315,7 +315,9 @@
 
 .dashboard-layout {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
   background: #111118;
 }
 
@@ -324,11 +326,15 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  height: 100%;
   overflow: hidden;
 }
 
 .dashboard-main {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -338,17 +344,15 @@
 
 .sidebar {
   width: 220px;
-  min-height: 100vh;
+  height: 100%;
   background: rgba(12, 12, 22, 0.95);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   flex-direction: column;
   padding: 1.25rem 0.75rem;
   gap: 0;
-  position: sticky;
-  top: 0;
-  height: 100vh;
   flex-shrink: 0;
+  overflow-y: auto;
 }
 
 .sidebar-brand {
@@ -562,6 +566,8 @@
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 0.6875rem;
   color: rgba(170, 170, 180, 0.75);
+  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .dashboard-footer-sep {
