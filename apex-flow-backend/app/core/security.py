@@ -2,7 +2,7 @@ import hashlib
 import secrets
 from typing import Any, Dict, Optional, Tuple
 import jwt
-
+from jwt import PyJWKClient, PyJWTError
 from app.core.config import settings
 from app.core.exceptions import UnauthorizedException
 
@@ -29,7 +29,7 @@ def hash_api_key(raw_key: str) -> str:
     return hashlib.sha256(raw_key.strip().encode("utf-8")).hexdigest()
 
 
-from jwt import PyJWKClient, PyJWTError
+
 
 _jwks_client: Optional[PyJWKClient] = None
 
