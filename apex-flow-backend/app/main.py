@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.adapters.storage.policy import get_storage_adapter
@@ -20,16 +20,25 @@ async def lifespan(app: FastAPI):
         await engine.dispose()
 
 
-
-
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json" if settings.docs_enabled else None,
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url="/redoc" if settings.docs_enabled else None,
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if (settings.ENVIRONMENT or "").strip().lower() == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 # CORS middleware setup
 app.add_middleware(
@@ -53,6 +62,6 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 async def root():
     return {
         "message": f"Welcome to {settings.PROJECT_NAME}",
-        "docs": "/docs",
+        "docs": "/docs" if settings.docs_enabled else None,
         "health": f"{settings.API_V1_STR}/health",
     }

@@ -130,6 +130,11 @@ class Settings(BaseSettings):
         # Browser security specification: allow_credentials cannot be True if allow_origins contains "*"
         return "*" not in self.BACKEND_CORS_ORIGINS
 
+    @property
+    def docs_enabled(self) -> bool:
+        # Enabled in dev/staging if DEBUG is True, but strictly disabled in production
+        return bool(self.DEBUG and (self.ENVIRONMENT or "").strip().lower() != "production")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

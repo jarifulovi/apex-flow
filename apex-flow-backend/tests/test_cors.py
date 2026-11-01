@@ -113,3 +113,40 @@ async def test_cors_simple_get_request_includes_cors_and_exposed_headers():
     expose_headers = response.headers.get("access-control-expose-headers", "")
     assert "Content-Disposition" in expose_headers
     assert "Content-Length" in expose_headers
+
+
+@pytest.mark.asyncio
+async def test_security_headers_present():
+    """Verify baseline HTTP security headers are included in responses"""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert response.headers.get("x-content-type-options") == "nosniff"
+    assert response.headers.get("x-frame-options") == "DENY"
+    assert response.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+
+
+def test_docs_enabled_behavior():
+    """Verify docs_enabled is disabled in production and controlled by DEBUG in other environments"""
+    dev_settings = Settings(
+        DATABASE_URL="postgresql://user:pass@localhost:5432/db",
+        ENVIRONMENT="development",
+        DEBUG=True,
+    )
+    assert dev_settings.docs_enabled is True
+
+    prod_settings = Settings(
+        DATABASE_URL="postgresql://user:pass@localhost:5432/db",
+        ENVIRONMENT="production",
+        DEBUG=True,  # Even if developer accidentally leaves DEBUG=True
+    )
+    assert prod_settings.docs_enabled is False
+
+    prod_off_settings = Settings(
+        DATABASE_URL="postgresql://user:pass@localhost:5432/db",
+        ENVIRONMENT="production",
+        DEBUG=False,
+    )
+    assert prod_off_settings.docs_enabled is False
+
