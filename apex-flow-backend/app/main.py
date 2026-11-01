@@ -2,14 +2,22 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.adapters.storage.policy import get_storage_adapter
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.database import engine
 from app.core.exceptions import register_exception_handlers
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
+    # Startup: validate storage adapter configuration
+    get_storage_adapter()
+    try:
+        yield
+    finally:
+        # Shutdown: cleanly dispose database connection pool
+        await engine.dispose()
 
 
 
