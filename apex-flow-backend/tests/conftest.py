@@ -48,12 +48,9 @@ def override_get_db_dependency():
         async with TestAsyncSessionLocal() as session:
             try:
                 yield session
-                await session.commit()
             except Exception:
                 await session.rollback()
                 raise
-            finally:
-                await session.close()
 
     app.dependency_overrides[get_db] = _get_db_override
     yield

@@ -14,10 +14,10 @@ engine_kwargs = {
 # Apply connection pool settings for PostgreSQL
 if "postgresql" in settings.DATABASE_URL:
     engine_kwargs.update({
-        "pool_size": 5,
-        "max_overflow": 3,
-        "pool_recycle": 300,
-        "pool_timeout": 30,
+        "pool_size": settings.DB_POOL_SIZE,
+        "max_overflow": settings.DB_MAX_OVERFLOW,
+        "pool_recycle": settings.DB_POOL_RECYCLE,
+        "pool_timeout": settings.DB_POOL_TIMEOUT,
         "connect_args": {"statement_cache_size": 0, "prepared_statement_cache_size": 0},
     })
 
@@ -40,12 +40,14 @@ class Base(DeclarativeBase):
 
 # Dependency for injection into FastAPI endpoint handlers
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Dependency yielding an AsyncSession.
+    Services are responsible for committing transactions (or using `async with session.begin():`).
+    Rolls back automatically only if an unhandled exception escapes the endpoint handler.
+    """
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback()
             raise
-        finally:
-            await session.close()

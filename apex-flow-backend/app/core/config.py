@@ -26,6 +26,10 @@ class Settings(BaseSettings):
 
     # Database connection URL (Required in environment / .env)
     DATABASE_URL: str
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 3
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 300
 
     # Storage settings for offloaded payloads (>250KB up to 2MB control plane ceiling)
     PAYLOAD_MAX_INLINE_BYTES: int = 250 * 1024  # 250 KB inline threshold
