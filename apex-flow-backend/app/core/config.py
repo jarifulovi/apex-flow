@@ -1,3 +1,4 @@
+import json
 from typing import List, Optional, Union
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -56,15 +57,78 @@ class Settings(BaseSettings):
         "http://localhost:8000",
         "http://127.0.0.1:8000",
     ]
+    CORS_ORIGIN_REGEX: Optional[str] = r"https://.*\.vercel\.app"
+    CORS_ALLOW_METHODS: Union[List[str], str] = ["*"]
+    CORS_ALLOW_HEADERS: Union[List[str], str] = ["*"]
+    CORS_EXPOSE_HEADERS: Union[List[str], str] = [
+        "Content-Disposition",
+        "Content-Length",
+        "X-Request-ID",
+    ]
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",") if i.strip()]
-        elif isinstance(v, list):
-            return v
+        origins: List[str] = []
+        if isinstance(v, str):
+            v_str = v.strip()
+            if not v_str:
+                return []
+            if v_str.startswith("["):
+                try:
+                    parsed = json.loads(v_str)
+                    if not isinstance(parsed, list):
+                        raise ValueError("JSON in BACKEND_CORS_ORIGINS must be a list of origin strings")
+                    origins = [str(item).strip().rstrip("/") for item in parsed if str(item).strip()]
+                except json.JSONDecodeError as err:
+                    raise ValueError(f"Invalid JSON format for BACKEND_CORS_ORIGINS: {err}") from err
+            else:
+                origins = [item.strip().rstrip("/") for item in v_str.split(",") if item.strip()]
+        elif isinstance(v, (list, tuple, set)):
+            origins = [str(item).strip().rstrip("/") for item in v if str(item).strip()]
+        else:
+            raise ValueError(f"BACKEND_CORS_ORIGINS must be a list or delimited string, got {type(v).__name__}")
+
+        # Deduplicate while preserving order
+        seen = set()
+        deduped = []
+        for origin in origins:
+            if origin not in seen:
+                seen.add(origin)
+                deduped.append(origin)
+        return deduped
+
+    @field_validator("CORS_ORIGIN_REGEX", mode="before")
+    @classmethod
+    def assemble_cors_regex(cls, v: Optional[str]) -> Optional[str]:
+        if not v or not v.strip():
+            return None
+        return v.strip()
+
+    @field_validator("CORS_EXPOSE_HEADERS", "CORS_ALLOW_METHODS", "CORS_ALLOW_HEADERS", mode="before")
+    @classmethod
+    def assemble_cors_headers(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            v_str = v.strip()
+            if not v_str:
+                return []
+            if v_str.startswith("["):
+                try:
+                    parsed = json.loads(v_str)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                    raise ValueError("JSON must be a list of header strings")
+                except json.JSONDecodeError as err:
+                    raise ValueError(f"Invalid JSON header list: {err}") from err
+            return [item.strip() for item in v_str.split(",") if item.strip()]
+        elif isinstance(v, (list, tuple, set)):
+            return [str(item).strip() for item in v if str(item).strip()]
         return []
+
+    @property
+    def cors_allow_credentials(self) -> bool:
+        # Browser security specification: allow_credentials cannot be True if allow_origins contains "*"
+        return "*" not in self.BACKEND_CORS_ORIGINS
 
     model_config = SettingsConfigDict(
         env_file=".env",

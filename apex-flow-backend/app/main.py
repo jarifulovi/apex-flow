@@ -23,42 +23,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware setup - robust support for Vercel, Render, and local development
-raw_origins = settings.BACKEND_CORS_ORIGINS
-if isinstance(raw_origins, str):
-    parsed_origins = [i.strip().rstrip("/") for i in raw_origins.split(",") if i.strip()]
-elif isinstance(raw_origins, list):
-    parsed_origins = [str(i).strip().rstrip("/") for i in raw_origins if i]
-else:
-    parsed_origins = []
-
-default_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "https://apex-flow-theta.vercel.app",
-]
-
-all_origins = list(set(parsed_origins + default_origins))
-
-if "*" in parsed_origins or "*" in all_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=all_origins,
-        allow_origin_regex=r"https://.*\.vercel\.app",
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# CORS middleware setup
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.CORS_ALLOW_METHODS,
+    allow_headers=settings.CORS_ALLOW_HEADERS,
+    expose_headers=settings.CORS_EXPOSE_HEADERS,
+)
 
 # Register central exception handlers
 register_exception_handlers(app)
