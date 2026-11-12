@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_current_project_key_context,
-    get_current_user_from_any_auth,
+    get_current_user_from_headers,
 )
 from app.core.database import get_db
 from app.schemas.project import ProjectKeyContext
@@ -39,7 +39,7 @@ async def create_workflow(
 @router.get("/workflows/stats")
 async def get_workflow_stats(
     project_id: Optional[uuid.UUID] = None,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -60,7 +60,7 @@ async def list_workflows(
     search: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -86,7 +86,7 @@ async def list_workflows(
 @router.get("/workflows/{workflow_id}", response_model=WorkflowDetailResponse)
 async def get_workflow_detail(
     workflow_id: uuid.UUID,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -101,7 +101,7 @@ async def get_workflow_detail(
 @router.post("/workflows/{workflow_id}/cancel", response_model=WorkflowDetailResponse)
 async def cancel_workflow_run(
     workflow_id: uuid.UUID,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -115,7 +115,7 @@ async def cancel_workflow_run(
 @router.post("/workflows/{workflow_id}/restart", response_model=WorkflowDetailResponse)
 async def restart_workflow_run(
     workflow_id: uuid.UUID,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -129,7 +129,7 @@ async def restart_workflow_run(
 @router.post("/workflows/{workflow_id}/complete", response_model=WorkflowDetailResponse)
 async def complete_workflow_run(
     workflow_id: uuid.UUID,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -148,7 +148,7 @@ async def complete_workflow_run(
 async def fork_workflow_run(
     workflow_id: uuid.UUID,
     payload: Optional[WorkflowForkRequest] = None,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
     db: AsyncSession = Depends(get_db),
 ):
     """

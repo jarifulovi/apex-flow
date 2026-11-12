@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_current_project_key_context,
-    get_current_user_from_any_auth,
+    get_current_user_from_headers,
 )
 from app.core.database import get_db
 from app.schemas.project import ProjectKeyContext
@@ -33,7 +33,7 @@ async def worker_heartbeat(
 @router.get("/workers", response_model=List[WorkerResponse])
 async def list_workers(
     project_id: Optional[uuid.UUID] = None,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_any_auth),
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
     db: AsyncSession = Depends(get_db),
 ):
     """

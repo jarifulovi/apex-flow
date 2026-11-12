@@ -240,14 +240,14 @@ async def test_server_scheduled_retry_delay(test_client_harness: ApexFlowClient)
     client = test_client_harness
     run_id = await client.trigger_workflow("scheduled-retry-pipeline")
 
-    # Queue step with 8-second initial delay
+    # Queue step with 20-second initial delay
     step_res = await client.http_client.post(
         "/api/v1/steps",
         json={
             "workflow_id": str(run_id),
             "step_name": "delayed-dispatch-step",
             "step_order": 1,
-            "delay_seconds": 8,
+            "delay_seconds": 20,
             "max_attempts": 3,
         },
     )
@@ -255,20 +255,24 @@ async def test_server_scheduled_retry_delay(test_client_harness: ApexFlowClient)
     step_id = step_res.json()["id"]
 
     # Immediate poll MUST return 204 (hidden because available_at is in the future)
-    immediate_poll = await client.http_client.post("/api/v1/steps/poll", json={})
+    immediate_poll = await client.http_client.post(
+        "/api/v1/steps/poll", json={"step_names": ["delayed-dispatch-step"]}
+    )
     assert immediate_poll.status_code == 204
 
     # Wait for the delay to mature
-    await asyncio.sleep(8.5)
+    await asyncio.sleep(20.5)
 
     # Poll again: step MUST be available now
-    matured_poll = await client.http_client.post("/api/v1/steps/poll", json={})
+    matured_poll = await client.http_client.post(
+        "/api/v1/steps/poll", json={"step_names": ["delayed-dispatch-step"]}
+    )
     assert matured_poll.status_code == 200
     polled_step = matured_poll.json()
     assert polled_step["id"] == step_id
     assert polled_step["attempt_count"] == 1
 
-    # Report failure with 8-second server backoff delay
+    # Report failure with 20-second server backoff delay
     rep_res = await client.http_client.post(
         "/api/v1/steps/report",
         json={
@@ -276,21 +280,25 @@ async def test_server_scheduled_retry_delay(test_client_harness: ApexFlowClient)
             "status": "failed",
             "error_message": "External API down",
             "attempt_count": 1,
-            "retry_delay_seconds": 8,
+            "retry_delay_seconds": 20,
         },
     )
     assert rep_res.status_code == 200
     assert rep_res.json()["status"] == "queued"
 
     # Immediate poll during backoff window MUST return 204
-    backoff_poll = await client.http_client.post("/api/v1/steps/poll", json={})
+    backoff_poll = await client.http_client.post(
+        "/api/v1/steps/poll", json={"step_names": ["delayed-dispatch-step"]}
+    )
     assert backoff_poll.status_code == 204
 
     # Wait for backoff delay to mature
-    await asyncio.sleep(8.5)
+    await asyncio.sleep(20.5)
 
     # Poll again: step is available for attempt 2 and succeeds
-    attempt2_poll = await client.http_client.post("/api/v1/steps/poll", json={})
+    attempt2_poll = await client.http_client.post(
+        "/api/v1/steps/poll", json={"step_names": ["delayed-dispatch-step"]}
+    )
     assert attempt2_poll.status_code == 200
     assert attempt2_poll.json()["attempt_count"] == 2
 

@@ -3,10 +3,14 @@ import mimetypes
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Response, UploadFile
+
 from app.adapters.storage.policy import PayloadPolicyManager, get_storage_adapter
-from app.api.deps import get_current_user_from_any_auth
-from app.core.database import get_db
+from app.api.deps import (
+    get_current_user_for_storage_download,
+    get_current_user_from_headers,
+)
+from app.core.exceptions import EntityNotFoundException, ValidationException
 
 router = APIRouter(prefix="/storage", tags=["Storage"])
 
@@ -14,12 +18,12 @@ router = APIRouter(prefix="/storage", tags=["Storage"])
 @router.post("/upload", response_model=Dict[str, Any])
 async def upload_file(
     file: UploadFile = File(...),
-    auth_user: uuid.UUID = Depends(get_current_user_from_any_auth),
+    auth_user: uuid.UUID = Depends(get_current_user_from_headers),
 ):
     """Upload a file/payload artifact to durable storage and get an $apexflow_ref descriptor."""
     content = await file.read()
     if not content:
-        raise HTTPException(status_code=400, detail="Cannot upload empty file.")
+        raise ValidationException("Cannot upload empty file.")
 
     ext = ""
     if file.filename and "." in file.filename:
@@ -33,7 +37,7 @@ async def upload_file(
     try:
         stored_key = await adapter.save(key, content, content_type=content_type)
     except ValueError as e:
-        raise HTTPException(status_code=413, detail=str(e))
+        raise ValidationException(str(e))
 
     is_encrypted = False
     key_hint = None
@@ -60,16 +64,14 @@ async def upload_file(
 @router.get("/download/{storage_key:path}")
 async def download_file(
     storage_key: str,
-    auth_user: uuid.UUID = Depends(get_current_user_from_any_auth),
+    auth_user: uuid.UUID = Depends(get_current_user_for_storage_download),
 ):
     """Retrieve binary content or offloaded JSON for a given storage key."""
     adapter = get_storage_adapter()
     try:
         content = await adapter.get(storage_key)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Storage object '{storage_key}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise EntityNotFoundException("Storage object", storage_key)
 
     content_type = mimetypes.guess_type(storage_key)[0] or "application/octet-stream"
     if storage_key.endswith(".json"):
