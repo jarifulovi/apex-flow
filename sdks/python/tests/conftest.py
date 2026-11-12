@@ -1,31 +1,41 @@
 import os
 import uuid
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import AsyncGenerator
+
 import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
-
-# Load environment variables from backend .env and SDK .env.test files before importing app
-backend_env = Path(__file__).parent.parent.parent.parent / "apex-flow-backend" / ".env"
-if backend_env.exists():
-    load_dotenv(backend_env, override=True)
-
-sdk_test_env = Path(__file__).parent.parent / ".env.test"
-if sdk_test_env.exists():
-    load_dotenv(sdk_test_env, override=True)
-
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.core.config import settings
+# Load environment variables from backend .env and SDK .env.test before importing backend app
+REPO_ROOT = Path(__file__).resolve().parents[3]
+backend_env = REPO_ROOT / "apex-flow-backend" / ".env"
+if backend_env.exists():
+    load_dotenv(backend_env, override=True)
+
+sdk_test_env = Path(__file__).resolve().parents[1] / ".env.test"
+if sdk_test_env.exists():
+    load_dotenv(sdk_test_env, override=True)
+
+from app.core.config import Settings, settings
 from app.core.database import get_db
 from app.main import app
+from app.models.project import Project
+from app.schemas.project_key import ProjectKeyCreate
+from app.services.projects.project_key_service import ProjectKeyService
+from apex_flow_sdk import ApexFlowClient
+
+# Resolve test database URL: supports TEST_DATABASE_URL with fallback to settings.DATABASE_URL
+raw_db_url = os.getenv("TEST_DATABASE_URL") or settings.DATABASE_URL
+test_database_url = Settings.assemble_db_connection(raw_db_url)
 
 # Shared test engine with NullPool
 test_engine = create_async_engine(
-    settings.DATABASE_URL,
+    test_database_url,
     poolclass=NullPool,
     connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
 )
@@ -99,28 +109,22 @@ async def test_user_id(db: AsyncSession) -> AsyncGenerator[uuid.UUID, None]:
 
 
 @pytest_asyncio.fixture
-async def test_project(db: AsyncSession, test_user_id: uuid.UUID) -> AsyncGenerator[Any, None]:
+async def test_project(db: AsyncSession, test_user_id: uuid.UUID) -> AsyncGenerator[Project, None]:
     """
     Creates a test Project owned by test_user_id.
     """
-    from app.models.project import Project
-
     project = Project(owner_id=test_user_id, name="Test Project")
     db.add(project)
     await db.commit()
     await db.refresh(project)
-
     yield project
 
 
 @pytest_asyncio.fixture
-async def test_project_key(db: AsyncSession, test_project: Any, test_user_id: uuid.UUID) -> AsyncGenerator[str, None]:
+async def test_project_key(db: AsyncSession, test_project: Project, test_user_id: uuid.UUID) -> AsyncGenerator[str, None]:
     """
     Creates an active ProjectKey record for test_project and yields the raw API key.
     """
-    from app.schemas.project_key import ProjectKeyCreate
-    from app.services.projects.project_key_service import ProjectKeyService
-
     created_key = await ProjectKeyService.create_project_key(
         db=db,
         owner_id=test_user_id,
@@ -130,14 +134,11 @@ async def test_project_key(db: AsyncSession, test_project: Any, test_user_id: uu
 
 
 @pytest_asyncio.fixture
-async def test_client_harness(test_project_key: str):
+async def test_client_harness(test_project_key: str) -> AsyncGenerator[ApexFlowClient, None]:
     """
     Yields a pre-configured ApexFlowClient wired to the test FastAPI app via ASGITransport.
     Automatically closes the client after test function completes.
     """
-    from httpx import ASGITransport, AsyncClient
-    from apex_flow_sdk import ApexFlowClient
-
     base_url = os.getenv("APEXFLOW_BASE_URL", "http://test").rstrip("/")
     client = ApexFlowClient(base_url=base_url, project_key=test_project_key)
     client.http_client = AsyncClient(
