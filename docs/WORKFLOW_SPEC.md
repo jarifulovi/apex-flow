@@ -60,7 +60,7 @@ A **Workflow Run** represents a single execution instance of a named workflow.
 1. **Idempotency & Deduplication**: If triggered with a `deduplication_id`, the control plane checks for an existing active run (`PENDING` or `RUNNING`) and returns the existing run ID, preventing duplicate workflow executions.
 2. **Event Debouncing Window (`debounce_seconds`, `max_debounce_seconds`)**: High-frequency triggers sharing a `deduplication_id` are coalesced. The workflow buffers in `pending` while `debounced_until > now()`, resetting the quiet window with each event (up to `debounce_deadline_at`).
 3. **Workflow-Level Deadlines (`timeout_seconds`)**: Workflows can declare execution deadlines (`deadline_at = started_at + timeout_seconds`). Background sweeps automatically fail runs that exceed their deadline and cancel incomplete steps.
-4. **Time-Travel Forking (`POST /api/v1/workflows/{id}/fork?from_step=N`)**: Clones workflow execution state up to step $N-1$ with outputs memoized, marking step $N$ as queued for fresh execution. Lineage is tracked via `forked_from_id`.
+4. **Time-Travel Forking (`POST /api/v1/workflows/{id}/fork` with `{"from_step_order": N}`)**: Clones workflow execution state up to step $N-1$ with outputs memoized, marking step $N$ as queued for fresh execution. Lineage is tracked via `forked_from_id`.
 5. **Interactive Restart**: Failed or cancelled runs can be restarted via `POST /api/v1/workflows/{id}/restart`. Restarting resets failed/cancelled steps to `QUEUED` while preserving previously completed step checkpoints.
 
 ---

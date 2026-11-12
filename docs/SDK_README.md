@@ -133,8 +133,9 @@ All language SDKs communicate with the backend control plane via HTTP REST endpo
    - *Payload*: `{"workflow_name": "<name>", "metadata": {...}, "deduplication_id": "...", "parent_workflow_id": "...", "timeout_seconds": 60, "debounce_seconds": 10}`
    - *Returns*: Workflow run metadata (`id`, `status`, `deadline_at`, `debounced_until`).
 
-2. **Fork Workflow**: `POST /api/v1/workflows/{id}/fork?from_step=N`
-   - *Returns*: Cloned workflow run with prior step checkpoints memoized and step $N$ queued.
+2. **Fork Workflow**: `POST /api/v1/workflows/{id}/fork`
+   - *Payload*: `{"from_step_order": N, "input_payload": {...}}`
+   - *Returns*: Cloned workflow run with prior step checkpoints memoized and step order $N$ queued.
 
 3. **Queue Step**: `POST /api/v1/steps`
    - *Payload*: `{"workflow_id": "<uuid>", "step_name": "<name>", "step_order": 1, "input_payload": {...}, "delay_seconds": 0, "priority": 0}`
@@ -150,6 +151,10 @@ All language SDKs communicate with the backend control plane via HTTP REST endpo
 
 6. **Complete Workflow**: `POST /api/v1/workflows/{id}/complete`
    - *Returns*: Final workflow status (`completed`).
+
+7. **Worker Heartbeat**: `POST /api/v1/workers/heartbeat`
+   - *Payload*: `{"name": "...", "worker_id": "<uuid>"}`
+   - *Returns*: Worker registration and heartbeat status (`id`, `name`, `status`, `last_seen_at`).
 
 ---
 

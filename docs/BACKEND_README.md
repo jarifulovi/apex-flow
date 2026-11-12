@@ -113,7 +113,7 @@ To maintain database performance and prevent `jsonb` table bloat:
 - **Step Execution Delays (`delay_seconds`)**: Steps can specify initial dispatch delays before becoming visible to dequeuers.
 
 ### 6. Time-Travel Debugging via Workflow Forking (`WorkflowService`)
-- Developers can branch a new workflow from any point in an existing run (`POST /api/v1/workflows/{id}/fork?from_step=N`).
+- Developers can branch a new workflow from any point in an existing run (`POST /api/v1/workflows/{id}/fork` with body `{"from_step_order": N}`).
 - Prior step outputs ($1 \dots N-1$) are cloned and memoized into the new run. Step $N$ is placed into `queued` state for execution.
 - Lineage is preserved via `forked_from_id`, enabling auditability and iterative local debugging of production failures.
 
@@ -149,15 +149,20 @@ Storage settings are configured in `app/core/config.py` via environment variable
 
 ## 🔒 Authentication & Multi-Tenant Security Model
 
-The backend control plane enforces a **Two-Layer Authentication Model** (`app/api/deps.py`):
+The backend control plane enforces a **Header-Strict Two-Layer Authentication Model** (`app/api/deps.py`):
 
 1. **SDK / Worker Authentication** (`X-ApexFlow-Project-Key`):
    - Authenticates worker requests via SHA-256 hashed Project API keys (`af_live_...`).
    - Automatically scopes queue polling, step creation, and workflow triggering to the key's project tenant.
+   - API keys are **never accepted in query parameters** to prevent URL log exposure.
 
 2. **Dashboard UI Authentication** (`Bearer JWT`):
-   - Authenticates dashboard requests via Supabase JWT Bearer tokens (`sub` claim).
+   - Authenticates dashboard requests via Supabase JWT Bearer tokens in the `Authorization` header (`sub` claim).
    - Scopes project key management, tenant workflow telemetry, and manual control actions to the authenticated user.
+
+3. **Storage Download Authentication**:
+   - `GET /api/v1/storage/download/{key}` accepts `Authorization: Bearer` or `X-ApexFlow-Project-Key` headers.
+   - For direct browser downloads, an ephemeral JWT query parameter (`?token=<jwt>`) is supported. API keys in query parameters remain strictly forbidden.
 
 ---
 
@@ -167,18 +172,26 @@ The backend control plane enforces a **Two-Layer Authentication Model** (`app/ap
 | :--- | :--- | :--- | :--- |
 | `/api/v1/health` | `GET` | None | Liveness probe for cloud health checks (0 DB queries). |
 | `/api/v1/health/db` | `GET` | None | Readiness probe checking live PostgreSQL database ping. |
+| `/api/v1/auth/me` | `GET` | Supabase JWT | Retrieve authenticated user profile from JWT claims. |
 | `/api/v1/keys` | `POST` | Supabase JWT | Create a new project API key (`raw_key` returned once). |
 | `/api/v1/keys` | `GET` | Supabase JWT | List user's active & revoked project API keys. |
 | `/api/v1/keys/{key_id}` | `DELETE` | Supabase JWT | Revoke a project API key by ID. |
+| `/api/v1/projects` | `GET` | Supabase JWT | List projects belonging to the authenticated user. |
+| `/api/v1/projects` | `POST` | Supabase JWT | Create a new project tenant. |
 | `/api/v1/workflows` | `POST` | Project API Key | Create, debounced buffer, or deduplicate a workflow run execution state. |
 | `/api/v1/workflows` | `GET` | Bearer / Key | List workflow runs (paginated & filtered). |
+| `/api/v1/workflows/stats` | `GET` | Bearer / Key | Get workflow run status breakdown counts for UI tabs. |
 | `/api/v1/workflows/{id}` | `GET` | Bearer / Key | Fetch workflow run detail and ordered step execution timeline. |
-| `/api/v1/workflows/{id}/fork` | `POST` | Bearer / Key | Fork workflow from step $N$ with prior checkpoints memoized. |
-| `/api/v1/workflows/{id}/complete` | `POST` | Project API Key | Mark workflow run completed upon SDK function completion. |
+| `/api/v1/workflows/{id}/fork` | `POST` | Bearer / Key | Fork workflow from step order $N$ with prior checkpoints memoized. |
+| `/api/v1/workflows/{id}/complete` | `POST` | Bearer / Key | Mark workflow run completed upon SDK function completion. |
 | `/api/v1/workflows/{id}/cancel` | `POST` | Bearer / Key | Cancel active workflow run and mark queued steps cancelled. |
 | `/api/v1/workflows/{id}/restart` | `POST` | Bearer / Key | Reset failed/cancelled steps to queued and restart run. |
 | `/api/v1/steps` | `POST` | Project API Key | Queue a new step under a workflow run (with optional delay & priority). |
+| `/api/v1/steps` | `GET` | Bearer / Key | List workflow execution steps with pagination & filtering. |
+| `/api/v1/steps/stats` | `GET` | Bearer / Key | Get step execution status breakdown counts for UI tabs. |
 | `/api/v1/steps/poll` | `POST` | Project API Key | Poll next queued step using `FOR UPDATE SKIP LOCKED` (priority & available_at). |
 | `/api/v1/steps/report` | `POST` | Project API Key | Report worker step execution result (`success` / `failed`). |
-| `/api/v1/storage/upload` | `POST` | Project API Key | Upload payload/file artifact and return `$apexflow_ref` descriptor. |
-| `/api/v1/storage/download/{key:path}` | `GET` | Bearer / Key | Stream binary content or offloaded JSON for a storage key. |
+| `/api/v1/workers` | `GET` | Bearer / Key | List connected execution workers for a project. |
+| `/api/v1/workers/heartbeat` | `POST` | Project API Key | Register a worker or record an active heartbeat. |
+| `/api/v1/storage/upload` | `POST` | Bearer / Key | Upload payload/file artifact and return `$apexflow_ref` descriptor. |
+| `/api/v1/storage/download/{key:path}` | `GET` | Bearer / Key / `?token` | Stream binary content or offloaded JSON for a storage key. |

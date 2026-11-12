@@ -57,17 +57,18 @@ ApexFlow is architected with clear decoupling between the **Zero-Knowledge Backe
 
    | Environment Variable | Recommended Value / Source | Description |
    | :--- | :--- | :--- |
+   | `ENVIRONMENT` | `production` | Deployment environment mode (`production` disables dev docs and enforces cloud storage). |
    | `DATABASE_URL` | `postgresql+asyncpg://...` | Connection string for Render Postgres or Supabase DB. |
    | `PROJECT_NAME` | `ApexFlow Control Plane` | Display name for API docs. |
    | `BACKEND_CORS_ORIGINS` | `https://<your-vercel-dashboard-app>.vercel.app` | Allowed CORS origins for dashboard cross-origin calls. |
-   | `STORAGE_PROVIDER` | `local` (or `s3`) | Storage adapter provider. |
+   | `STORAGE_PROVIDER` | `s3` (or `cloudflare`) | Cloud storage adapter (`local` is rejected in production to prevent container disk overflow). |
    | `PAYLOAD_MAX_INLINE_BYTES` | `256000` | 250KB offload threshold. |
    | `PAYLOAD_MAX_SINGLE_BYTES` | `2097152` | 2MB single payload limit ceiling. |
    | `SUPABASE_JWT_SECRET` | `<your-supabase-jwt-secret>` | Secret key for verifying dashboard Bearer tokens. |
-   | `S3_BUCKET_NAME` | `<your-s3-bucket-name>` | *(Optional)* Target S3/Supabase/R2 bucket name. |
-   | `S3_ENDPOINT_URL` | `<your-endpoint-url>` | *(Optional)* Endpoint URL for Supabase/R2/MinIO. |
-   | `AWS_ACCESS_KEY_ID` | `<access-key-id>` | *(Optional)* Cloud storage access key ID. |
-   | `AWS_SECRET_ACCESS_KEY` | `<secret-key>` | *(Optional)* Cloud storage secret access key. |
+   | `S3_BUCKET_NAME` | `<your-s3-bucket-name>` | Target S3 or Cloudflare R2 bucket name. |
+   | `S3_ENDPOINT_URL` | `<your-endpoint-url>` | Endpoint URL for Cloudflare R2, MinIO, or Supabase Storage. |
+   | `AWS_ACCESS_KEY_ID` | `<access-key-id>` | Cloud storage access key ID. |
+   | `AWS_SECRET_ACCESS_KEY` | `<secret-key>` | Cloud storage secret access key. |
 
 5. **Deploy & Verify**:
    - Click **Create Web Service**.
