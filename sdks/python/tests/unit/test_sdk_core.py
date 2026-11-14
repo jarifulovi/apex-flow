@@ -215,3 +215,26 @@ async def test_sdk_start_worker_long_polling_payload_and_immediate_drain():
     # Neither post-step nor post-204 re-poll waited the 5.0s poll_interval
     assert (poll_timestamps[2] - poll_timestamps[0]) < 1.0
 
+
+def test_sdk_duplicate_registration_raises_value_error():
+    """Verify in-memory check raises ValueError when registering duplicate workflow or step names."""
+    client = ApexFlowClient(base_url="http://test")
+
+    @client.workflow("pipeline-a")
+    async def flow_one(ctx):
+        pass
+
+    with pytest.raises(ValueError, match="Workflow 'pipeline-a' is already registered"):
+        @client.workflow("pipeline-a")
+        async def flow_two(ctx):
+            pass
+
+    @client.step("step-alpha")
+    async def step_one(payload):
+        pass
+
+    with pytest.raises(ValueError, match="Step 'step-alpha' is already registered"):
+        @client.step("step-alpha")
+        async def step_two(payload):
+            pass
+

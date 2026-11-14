@@ -88,6 +88,8 @@ class ApexFlowClient:
 
     def workflow(self, name: str):
         """Decorator to register a workflow definition under a unique name."""
+        if name in self._workflows:
+            raise ValueError(f"Workflow '{name}' is already registered on this client instance.")
 
         def decorator(func: Callable):
             @functools.wraps(func)
@@ -106,6 +108,8 @@ class ApexFlowClient:
 
     def step(self, name: str):
         """Decorator to register a standalone step handler function."""
+        if name in self._step_handlers:
+            raise ValueError(f"Step '{name}' is already registered on this client instance.")
 
         def decorator(func: Callable):
             self._step_handlers[name] = func
