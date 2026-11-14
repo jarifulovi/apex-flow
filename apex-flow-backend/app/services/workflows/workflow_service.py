@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.core.exceptions import EntityNotFoundException
 from app.models.workflow_run import WorkflowRun
 from app.models.step import WorkflowStep
-from app.schemas.workflow import WorkflowCreate
+from app.schemas.workflow import WorkflowCreate, WorkflowDefinitionSummary
 from app.services.projects.project_service import ProjectService
 
 
@@ -233,6 +233,7 @@ class WorkflowService:
         db: AsyncSession,
         owner_id: Optional[uuid.UUID] = None,
         project_id: Optional[uuid.UUID] = None,
+        workflow_name: Optional[str] = None,
     ) -> Dict[str, int]:
         """Get workflow count per status for filter tabs."""
         stmt = select(WorkflowRun.status, func.count(WorkflowRun.id)).group_by(WorkflowRun.status)
@@ -240,6 +241,9 @@ class WorkflowService:
             stmt = stmt.where(WorkflowRun.project_id == project_id)
         elif owner_id:
             stmt = stmt.join(WorkflowRun.project).where(WorkflowRun.project.has(owner_id=owner_id))
+
+        if workflow_name:
+            stmt = stmt.where(WorkflowRun.workflow_name == workflow_name)
 
         result = await db.execute(stmt)
         counts: Dict[str, int] = {"all": 0, "pending": 0, "running": 0, "completed": 0, "failed": 0, "cancelled": 0}
@@ -250,6 +254,88 @@ class WorkflowService:
             total += count_val
         counts["all"] = total
         return counts
+
+    @staticmethod
+    async def get_workflow_definitions_summary(
+        db: AsyncSession,
+        owner_id: Optional[uuid.UUID] = None,
+        project_id: Optional[uuid.UUID] = None,
+        search: Optional[str] = None,
+    ) -> List[WorkflowDefinitionSummary]:
+        """Aggregate metrics per distinct workflow_name for the workflow catalog."""
+        total_col = func.count(WorkflowRun.id).label("total_runs")
+        completed_col = func.count(WorkflowRun.id).filter(WorkflowRun.status == "completed").label("completed_runs")
+        failed_col = func.count(WorkflowRun.id).filter(WorkflowRun.status == "failed").label("failed_runs")
+        active_col = (
+            func.count(WorkflowRun.id)
+            .filter(WorkflowRun.status.in_(["pending", "running"]))
+            .label("active_runs")
+        )
+        last_run_col = func.max(WorkflowRun.created_at).label("last_run_at")
+        avg_dur_col = (
+            func.avg(
+                func.extract("epoch", WorkflowRun.completed_at) - func.extract("epoch", WorkflowRun.started_at)
+            )
+            .filter(
+                and_(
+                    WorkflowRun.status == "completed",
+                    WorkflowRun.started_at.is_not(None),
+                    WorkflowRun.completed_at.is_not(None),
+                )
+            )
+            .label("avg_duration_seconds")
+        )
+
+        stmt = select(
+            WorkflowRun.workflow_name,
+            total_col,
+            completed_col,
+            failed_col,
+            active_col,
+            last_run_col,
+            avg_dur_col,
+        ).group_by(WorkflowRun.workflow_name)
+
+        if project_id:
+            stmt = stmt.where(WorkflowRun.project_id == project_id)
+        elif owner_id:
+            stmt = stmt.join(WorkflowRun.project).where(WorkflowRun.project.has(owner_id=owner_id))
+
+        if search and search.strip():
+            pattern = f"%{search.lower().strip()}%"
+            stmt = stmt.where(func.lower(WorkflowRun.workflow_name).like(pattern))
+
+        stmt = stmt.order_by(last_run_col.desc().nulls_last(), WorkflowRun.workflow_name.asc())
+
+        result = await db.execute(stmt)
+        summaries: List[WorkflowDefinitionSummary] = []
+        for row in result.all():
+            total = int(row.total_runs or 0)
+            completed = int(row.completed_runs or 0)
+            failed = int(row.failed_runs or 0)
+            active = int(row.active_runs or 0)
+            terminal = completed + failed
+            if terminal > 0:
+                success_rate = round((completed / terminal) * 100.0, 1)
+            elif total > 0:
+                success_rate = round((completed / total) * 100.0, 1)
+            else:
+                success_rate = 0.0
+            avg_duration = round(float(row.avg_duration_seconds), 2) if row.avg_duration_seconds is not None else None
+
+            summaries.append(
+                WorkflowDefinitionSummary(
+                    workflow_name=row.workflow_name,
+                    total_runs=total,
+                    completed_runs=completed,
+                    failed_runs=failed,
+                    active_runs=active,
+                    success_rate=success_rate,
+                    avg_duration_seconds=avg_duration,
+                    last_run_at=row.last_run_at,
+                )
+            )
+        return summaries
 
     @staticmethod
     async def get_workflow_run_by_id(

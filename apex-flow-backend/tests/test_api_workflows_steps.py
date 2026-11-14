@@ -73,3 +73,73 @@ async def test_full_workflow_and_step_lifecycle_api(
         assert len(detail_data["steps"]) == 1
         assert detail_data["steps"][0]["id"] == step_id
         assert detail_data["steps"][0]["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_workflow_definitions_and_scoped_stats_api(test_project_key: str):
+    """
+    Verify /workflows/definitions aggregates health metrics per distinct workflow_name
+    and /workflows/stats supports workflow_name filtering.
+    """
+    headers = {"X-ApexFlow-Project-Key": test_project_key}
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=headers
+    ) as ac:
+        # 1. Create runs across two distinct workflow definitions
+        alpha_res = await ac.post(
+            "/api/v1/workflows",
+            json={"workflow_name": "alpha-pipeline", "metadata": {}},
+        )
+        assert alpha_res.status_code == 201
+        alpha_id = alpha_res.json()["id"]
+
+        beta_res = await ac.post(
+            "/api/v1/workflows",
+            json={"workflow_name": "beta-pipeline", "metadata": {}},
+        )
+        assert beta_res.status_code == 201
+
+        # 2. Complete a step on alpha-pipeline so it transitions to completed
+        step_res = await ac.post(
+            "/api/v1/steps",
+            json={"workflow_id": alpha_id, "step_name": "step-1"},
+        )
+        assert step_res.status_code == 201
+        step_id = step_res.json()["id"]
+
+        poll_res = await ac.post("/api/v1/steps/poll")
+        assert poll_res.status_code == 200
+        assert poll_res.json()["id"] == step_id
+
+        report_res = await ac.post(
+            "/api/v1/steps/report",
+            json={"step_id": step_id, "status": "success", "output_payload": {"ok": True}},
+        )
+        assert report_res.status_code == 200
+
+        # 3. Query /workflows/definitions
+        defs_res = await ac.get("/api/v1/workflows/definitions")
+        assert defs_res.status_code == 200
+        defs_by_name = {d["workflow_name"]: d for d in defs_res.json()}
+
+        assert "alpha-pipeline" in defs_by_name
+        assert defs_by_name["alpha-pipeline"]["total_runs"] == 1
+        assert defs_by_name["alpha-pipeline"]["completed_runs"] == 1
+        assert defs_by_name["alpha-pipeline"]["failed_runs"] == 0
+        assert defs_by_name["alpha-pipeline"]["active_runs"] == 0
+        assert defs_by_name["alpha-pipeline"]["success_rate"] == 100.0
+
+        assert "beta-pipeline" in defs_by_name
+        assert defs_by_name["beta-pipeline"]["total_runs"] == 1
+        assert defs_by_name["beta-pipeline"]["active_runs"] == 1
+        assert defs_by_name["beta-pipeline"]["completed_runs"] == 0
+
+        # 4. Query /workflows/stats scoped strictly to alpha-pipeline
+        stats_res = await ac.get("/api/v1/workflows/stats", params={"workflow_name": "alpha-pipeline"})
+        assert stats_res.status_code == 200
+        stats = stats_res.json()
+        assert stats["all"] == 1
+        assert stats["completed"] == 1
+        assert stats["pending"] == 0
+        assert stats["running"] == 0
+        assert stats["failed"] == 0

@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.schemas.project import ProjectKeyContext
 from app.schemas.workflow import (
     WorkflowCreate,
+    WorkflowDefinitionSummary,
     WorkflowDetailResponse,
     WorkflowForkRequest,
     WorkflowResponse,
@@ -39,6 +40,7 @@ async def create_workflow(
 @router.get("/workflows/stats")
 async def get_workflow_stats(
     project_id: Optional[uuid.UUID] = None,
+    workflow_name: Optional[str] = None,
     authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
     db: AsyncSession = Depends(get_db),
 ):
@@ -46,7 +48,28 @@ async def get_workflow_stats(
     Get workflow run status breakdown counts for filter tabs.
     """
     return await WorkflowService.get_workflow_status_counts(
-        db=db, owner_id=authenticated_user_id, project_id=project_id
+        db=db,
+        owner_id=authenticated_user_id,
+        project_id=project_id,
+        workflow_name=workflow_name,
+    )
+
+
+@router.get("/workflows/definitions", response_model=List[WorkflowDefinitionSummary])
+async def list_workflow_definitions(
+    project_id: Optional[uuid.UUID] = None,
+    search: Optional[str] = None,
+    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get aggregated workflow definitions catalog and health metrics per distinct workflow_name.
+    """
+    return await WorkflowService.get_workflow_definitions_summary(
+        db=db,
+        owner_id=authenticated_user_id,
+        project_id=project_id,
+        search=search,
     )
 
 

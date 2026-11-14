@@ -83,3 +83,14 @@ class WorkflowResponse(BaseModel):
 class WorkflowDetailResponse(WorkflowResponse):
     steps: List[WorkflowStepResponse] = []
     sub_workflows: List[WorkflowResponse] = []
+
+
+class WorkflowDefinitionSummary(BaseModel):
+    workflow_name: str
+    total_runs: int = 0
+    completed_runs: int = 0
+    failed_runs: int = 0
+    active_runs: int = 0
+    success_rate: float = 0.0
+    avg_duration_seconds: Optional[float] = None
+    last_run_at: Optional[datetime] = None

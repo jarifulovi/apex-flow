@@ -13,6 +13,7 @@ DROP INDEX IF EXISTS idx_workflow_runs_forked;
 DROP INDEX IF EXISTS idx_workflow_runs_parent;
 DROP INDEX IF EXISTS idx_workflow_runs_dedup;
 DROP INDEX IF EXISTS idx_workflow_runs_status;
+DROP INDEX IF EXISTS idx_workflow_runs_project_name;
 DROP INDEX IF EXISTS idx_workflow_runs_project;
 DROP INDEX IF EXISTS idx_workers_project_status;
 DROP INDEX IF EXISTS idx_project_keys_project;
@@ -94,6 +95,7 @@ CREATE TABLE workflow_runs (
 );
 
 CREATE INDEX idx_workflow_runs_project ON workflow_runs (project_id, created_at DESC);
+CREATE INDEX idx_workflow_runs_project_name ON workflow_runs (project_id, workflow_name);
 CREATE INDEX idx_workflow_runs_status ON workflow_runs (project_id, status);
 CREATE INDEX idx_workflow_runs_deadline ON workflow_runs (deadline_at) WHERE status IN ('pending', 'running') AND deadline_at IS NOT NULL;
 CREATE INDEX idx_workflow_runs_forked ON workflow_runs (forked_from_id) WHERE forked_from_id IS NOT NULL;

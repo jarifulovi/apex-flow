@@ -7,7 +7,8 @@ export async function getWorkflows(
   limit = 10,
   offset = 0,
   search?: string,
-  parentWorkflowId?: string
+  parentWorkflowId?: string,
+  workflowName?: string
 ): Promise<PaginatedResponse<Workflow[]>> {
   const query = new URLSearchParams({
     limit: limit.toString(),
@@ -25,18 +26,54 @@ export async function getWorkflows(
   if (parentWorkflowId) {
     query.set("parent_workflow_id", parentWorkflowId);
   }
+  if (workflowName) {
+    query.set("workflow_name", workflowName);
+  }
   return fetchWithMeta<Workflow[]>(`/api/v1/workflows?${query.toString()}`, token);
 }
 
 export async function getWorkflowStats(
   token: string,
-  projectId?: string
+  projectId?: string,
+  workflowName?: string
 ): Promise<Record<string, number>> {
   const query = new URLSearchParams();
   if (projectId) {
     query.set("project_id", projectId);
   }
+  if (workflowName) {
+    query.set("workflow_name", workflowName);
+  }
   return fetchWithAuth<Record<string, number>>(`/api/v1/workflows/stats?${query.toString()}`, token);
+}
+
+export interface WorkflowDefinitionSummary {
+  workflow_name: string;
+  total_runs: number;
+  completed_runs: number;
+  failed_runs: number;
+  active_runs: number;
+  success_rate: number;
+  avg_duration_seconds?: number | null;
+  last_run_at?: string | null;
+}
+
+export async function getWorkflowDefinitions(
+  token: string,
+  projectId?: string,
+  search?: string
+): Promise<WorkflowDefinitionSummary[]> {
+  const query = new URLSearchParams();
+  if (projectId) {
+    query.set("project_id", projectId);
+  }
+  if (search && search.trim()) {
+    query.set("search", search.trim());
+  }
+  return fetchWithAuth<WorkflowDefinitionSummary[]>(
+    `/api/v1/workflows/definitions?${query.toString()}`,
+    token
+  );
 }
 
 export interface WorkflowStepSummary {

@@ -1,6 +1,6 @@
 import { GitBranch, Clock, CheckCircle2, AlertTriangle, ChevronRight, Timer, Ban } from "lucide-react";
 import Link from "next/link";
-import { formatDurationMs, type Workflow } from "@/features/workflows/api";
+import { formatDurationMs, type Workflow, type WorkflowDefinitionSummary } from "@/features/workflows/api";
 
 const STATUS_CONFIG: Record<
   Workflow["status"],
@@ -151,6 +151,109 @@ export function WorkflowStatusBar({ workflows }: { workflows: Workflow[] }) {
           <span className="status-bar-label">{label}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function getSuccessRateBadgeClass(rate: number): string {
+  if (rate >= 90) return "status-badge status-badge--completed";
+  if (rate >= 70) return "status-badge status-badge--pending";
+  return "status-badge status-badge--failed";
+}
+
+function formatAvgDuration(seconds?: number | null): string {
+  if (seconds === undefined || seconds === null) return "—";
+  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}m ${secs}s`;
+}
+
+export function WorkflowDefinitionTable({ definitions }: { definitions: WorkflowDefinitionSummary[] }) {
+  if (definitions.length === 0) {
+    return (
+      <div className="table-empty">
+        <GitBranch size={28} className="table-empty-icon" />
+        <p className="table-empty-text">No workflow definitions found</p>
+        <p className="table-empty-sub">Unique workflow types triggered by your workers will appear here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="data-table-wrap">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Workflow Name</th>
+            <th>Total Runs</th>
+            <th>Success Rate</th>
+            <th>Active / Failed</th>
+            <th>Avg Duration</th>
+            <th>Last Run</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {definitions.map((def) => {
+            const href = `/dashboard/workflows/definitions/${encodeURIComponent(def.workflow_name)}`;
+            return (
+              <tr key={def.workflow_name}>
+                <td>
+                  <div className="table-cell-primary">
+                    <div className="table-icon table-icon--violet">
+                      <GitBranch size={13} />
+                    </div>
+                    <div>
+                      <p className="table-name font-mono">{def.workflow_name}</p>
+                      <p className="table-meta">{def.completed_runs} completed runs</p>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span className="table-steps font-mono">{def.total_runs}</span>
+                </td>
+                <td>
+                  <span className={getSuccessRateBadgeClass(def.success_rate)}>
+                    {def.success_rate.toFixed(1)}%
+                  </span>
+                </td>
+                <td>
+                  <div className="flex items-center gap-2 text-xs font-mono">
+                    <span className="text-cyan-400">{def.active_runs} active</span>
+                    <span className="text-zinc-600">/</span>
+                    <span className={def.failed_runs > 0 ? "text-red-400" : "text-zinc-400"}>
+                      {def.failed_runs} failed
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span className="flex items-center gap-1.5 text-xs text-zinc-300 font-mono">
+                    <Timer size={12} className="text-zinc-500" />
+                    {formatAvgDuration(def.avg_duration_seconds)}
+                  </span>
+                </td>
+                <td>
+                  <span className="table-date">
+                    {def.last_run_at ? formatDate(def.last_run_at) : "—"}
+                  </span>
+                </td>
+                <td>
+                  <Link
+                    href={href}
+                    className="px-3 py-1.5 rounded-lg bg-violet-600/15 hover:bg-violet-600 border border-violet-500/30 hover:border-violet-500 text-xs font-semibold text-violet-300 hover:text-white transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap"
+                    aria-label={`View runs and analytics for ${def.workflow_name}`}
+                  >
+                    <span>View Runs & Analytics</span>
+                    <ChevronRight size={14} />
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
