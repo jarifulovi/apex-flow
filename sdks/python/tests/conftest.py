@@ -145,6 +145,7 @@ async def test_client_harness(test_project_key: str) -> AsyncGenerator[ApexFlowC
         transport=ASGITransport(app=app),
         base_url=base_url,
         headers={"X-ApexFlow-Project-Key": test_project_key},
+        timeout=client.http_client.timeout,
     )
     yield client
     await client.close()

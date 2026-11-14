@@ -11,6 +11,7 @@ from app.models.workflow_run import WorkflowRun
 from app.models.step import WorkflowStep
 from app.schemas.workflow import WorkflowCreate, WorkflowDefinitionSummary
 from app.services.projects.project_service import ProjectService
+from app.services.steps.notifier import QueueNotifier
 
 
 class WorkflowService:
@@ -89,6 +90,10 @@ class WorkflowService:
 
                 await db.commit()
                 await db.refresh(existing_debounced_run)
+                QueueNotifier.notify(
+                    target_project_id,
+                    delay_seconds=max(0.0, (new_until - now).total_seconds()),
+                )
                 return existing_debounced_run
 
         # 2. Standard idempotency deduplication check
@@ -158,6 +163,10 @@ class WorkflowService:
                             existing_run.metadata_ = merged_meta
                         await db.commit()
                         await db.refresh(existing_run)
+                        QueueNotifier.notify(
+                            target_project_id,
+                            delay_seconds=max(0.0, (new_until - now).total_seconds()),
+                        )
                     return existing_run
             raise
 
@@ -480,6 +489,7 @@ class WorkflowService:
 
         await db.commit()
         await db.refresh(workflow_run)
+        QueueNotifier.notify(workflow_run.project_id)
         return workflow_run
 
     @staticmethod
@@ -592,6 +602,7 @@ class WorkflowService:
 
         await db.commit()
         await db.refresh(forked_run)
+        QueueNotifier.notify(forked_run.project_id)
         return await WorkflowService.get_workflow_run_by_id(
             db=db, workflow_run_id=forked_run.id, owner_id=owner_id, project_id=project_id
         )

@@ -9,11 +9,16 @@ from app.core.exceptions import EntityNotFoundException
 from app.models.step import WorkflowStep
 from app.models.workflow_run import WorkflowRun
 from app.schemas.step import StepReportPayload, WorkflowStepCreate
+from app.services.steps.notifier import QueueNotifier
 
 
 class StepService:
     @staticmethod
-    async def create_step(db: AsyncSession, payload: WorkflowStepCreate) -> WorkflowStep:
+    async def create_step(
+        db: AsyncSession,
+        payload: WorkflowStepCreate,
+        project_id: Optional[uuid.UUID] = None,
+    ) -> WorkflowStep:
         """Queue a new step under an existing workflow run."""
         now = datetime.now(timezone.utc)
 
@@ -83,10 +88,17 @@ class StepService:
         db.add(step)
         await db.commit()
         await db.refresh(step)
+        if project_id is not None:
+            wait_seconds = max(0.0, (available_time - now).total_seconds())
+            QueueNotifier.notify(project_id, delay_seconds=wait_seconds)
         return step
 
     @staticmethod
-    async def report_step_status(db: AsyncSession, payload: StepReportPayload) -> WorkflowStep:
+    async def report_step_status(
+        db: AsyncSession,
+        payload: StepReportPayload,
+        project_id: Optional[uuid.UUID] = None,
+    ) -> WorkflowStep:
         """
         Report execution result of a step (success or failed) and update workflow run state.
         """
@@ -110,6 +122,7 @@ class StepService:
         step.error_message = payload.error_message
         step.locked_until = None
 
+        retry_delay = 0.0
         if payload.status == "failed":
             if step.attempt_count < step.max_attempts:
                 step.status = "queued"
@@ -117,10 +130,10 @@ class StepService:
 
                 # Calculate server-side backoff retry delay
                 if payload.retry_delay_seconds is not None and payload.retry_delay_seconds >= 0:
-                    retry_delay = payload.retry_delay_seconds
+                    retry_delay = float(payload.retry_delay_seconds)
                 else:
                     # Default exponential backoff: 2^(attempt-1), e.g. attempt 1 -> 2s, attempt 2 -> 4s
-                    retry_delay = min(300, 2 ** max(0, step.attempt_count - 1))
+                    retry_delay = float(min(300, 2 ** max(0, step.attempt_count - 1)))
 
                 step.available_at = now + timedelta(seconds=retry_delay)
             else:
@@ -153,6 +166,8 @@ class StepService:
 
         await db.commit()
         await db.refresh(step)
+        if project_id is not None and step.status == "queued":
+            QueueNotifier.notify(project_id, delay_seconds=retry_delay)
         return step
 
 

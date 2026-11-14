@@ -145,3 +145,73 @@ async def test_sdk_large_payload_offload_and_resolve():
     resolved = await StorageResolver.resolve_payload(http_client, "http://test", offloaded_ref)
     assert resolved == large_payload
 
+
+@pytest.mark.asyncio
+async def test_sdk_start_worker_long_polling_payload_and_immediate_drain():
+    """Verify start_worker sends 20s timeout_seconds and re-polls immediately without interval sleep."""
+    import asyncio
+    import time
+
+    # 1. run_once=True sends timeout_seconds=0.0
+    client_once = ApexFlowClient(base_url="http://test")
+    poll_payloads_once = []
+
+    async def fake_post_once(url, json=None, **kwargs):
+        res = MagicMock()
+        if url.endswith("/api/v1/steps/poll"):
+            poll_payloads_once.append(json)
+            res.status_code = 204
+        else:
+            res.status_code = 200
+        return res
+
+    client_once.http_client = MagicMock(spec=httpx.AsyncClient)
+    client_once.http_client.post = fake_post_once
+    await client_once.start_worker(run_once=True)
+    assert len(poll_payloads_once) == 1
+    assert poll_payloads_once[0]["timeout_seconds"] == 0.0
+
+    # 2. Continuous mode sends default 20.0s timeout and drains backlog without 5s interval sleep
+    client = ApexFlowClient(base_url="http://test", poll_interval_seconds=5.0)
+
+    @client.step("echo")
+    async def echo_handler(payload):
+        return {"echo": payload}
+
+    poll_payloads = []
+    poll_timestamps = []
+
+    async def fake_post_continuous(url, json=None, **kwargs):
+        res = MagicMock()
+        if url.endswith("/api/v1/steps/poll"):
+            poll_payloads.append(json)
+            poll_timestamps.append(time.monotonic())
+            if len(poll_payloads) == 1:
+                res.status_code = 200
+                res.json.return_value = {
+                    "id": str(uuid.uuid4()),
+                    "workflow_run_id": str(uuid.uuid4()),
+                    "step_name": "echo",
+                    "input_payload": {"msg": "hi"},
+                    "attempt_count": 1,
+                }
+                return res
+            if len(poll_payloads) == 2:
+                res.status_code = 204
+                return res
+            raise asyncio.CancelledError()
+        res.status_code = 200
+        res.json.return_value = {}
+        return res
+
+    client.http_client = MagicMock(spec=httpx.AsyncClient)
+    client.http_client.post = fake_post_continuous
+
+    with pytest.raises(asyncio.CancelledError):
+        await client.start_worker()
+
+    assert len(poll_payloads) == 3
+    assert all(p["timeout_seconds"] == 20.0 for p in poll_payloads)
+    # Neither post-step nor post-204 re-poll waited the 5.0s poll_interval
+    assert (poll_timestamps[2] - poll_timestamps[0]) < 1.0
+

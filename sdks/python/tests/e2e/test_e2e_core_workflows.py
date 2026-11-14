@@ -1,6 +1,8 @@
 import asyncio
+import time
 import uuid
 import pytest
+from app.services.steps.notifier import QueueNotifier
 from apex_flow_sdk import ApexFlowClient, WorkflowContext
 from tests.helpers.assertions import ApexFlowAssert
 
@@ -224,4 +226,84 @@ async def test_parallel_steps_execution_with_gather(test_client_harness: ApexFlo
     assert len(wf_data["steps"]) == 2
     for step in wf_data["steps"]:
         ApexFlowAssert.assert_step(step, status="success")
+
+
+@pytest.mark.asyncio
+async def test_worker_long_polling_instant_step_execution(test_client_harness: ApexFlowClient, test_project):
+    """
+    Test E2E worker long-polling against the live backend app:
+    1. Worker starts holding a 28s long-poll on an empty queue and enters QueueNotifier.wait().
+    2. A step is queued once the worker is actively waiting.
+    3. Worker wakes up promptly, executes the handler, and reports completion.
+    """
+    client = test_client_harness
+    run_id = await client.trigger_workflow("long-polling-worker-e2e")
+
+    executed_event = asyncio.Event()
+    received_payload = {}
+
+    @client.step("long-poll-task")
+    async def handle_long_poll_task(payload):
+        received_payload.update(payload)
+        executed_event.set()
+        return {"processed": True, "echo": payload.get("msg")}
+
+    worker_task = asyncio.create_task(
+        client.start_worker(
+            step_names=["long-poll-task"],
+            poll_timeout=28.0,
+            run_once=False,
+        )
+    )
+
+    try:
+        # Wait until worker completes startup heartbeat + initial DB query and suspends in long-poll wait
+        wait_deadline = time.monotonic() + 45.0
+        while not QueueNotifier.is_waiting(test_project.id) and time.monotonic() < wait_deadline:
+            await asyncio.sleep(0.1)
+        assert QueueNotifier.is_waiting(test_project.id) is True
+
+        step_res = await client.http_client.post(
+            "/api/v1/steps",
+            json={
+                "workflow_id": str(run_id),
+                "step_name": "long-poll-task",
+                "input_payload": {"msg": "hello-long-poll"},
+            },
+        )
+        assert step_res.status_code == 201
+        step_queued_at = time.monotonic()
+
+        await asyncio.wait_for(executed_event.wait(), timeout=20.0)
+        pickup_elapsed = time.monotonic() - step_queued_at
+        assert pickup_elapsed < 15.0
+        assert received_payload["msg"] == "hello-long-poll"
+
+        # Wait until start_worker reports completion and backend updates workflow status
+        wf_data = None
+        report_deadline = time.monotonic() + 25.0
+        while time.monotonic() < report_deadline:
+            wf_res = await client.http_client.get(f"/api/v1/workflows/{run_id}")
+            assert wf_res.status_code == 200
+            candidate = wf_res.json()
+            if candidate["steps"] and candidate["steps"][0]["status"] == "success":
+                wf_data = candidate
+                break
+            await asyncio.sleep(0.2)
+
+        assert wf_data is not None
+        ApexFlowAssert.assert_workflow_run(wf_data, status="completed")
+        ApexFlowAssert.assert_step(
+            wf_data["steps"][0],
+            step_name="long-poll-task",
+            status="success",
+            attempt_count=1,
+            output_payload={"processed": True, "echo": "hello-long-poll"},
+        )
+    finally:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
 

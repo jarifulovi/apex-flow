@@ -143,3 +143,56 @@ async def test_workflow_definitions_and_scoped_stats_api(test_project_key: str):
         assert stats["pending"] == 0
         assert stats["running"] == 0
         assert stats["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_long_polling_instant_wakeup_on_step_create(test_project_key: str):
+    """
+    Verify POST /api/v1/steps/poll waits up to timeout_seconds when empty (returning 204)
+    and wakes up promptly without waiting full timeout when a new step is created.
+    """
+    import asyncio
+    import time
+
+    headers = {"X-ApexFlow-Project-Key": test_project_key}
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=headers
+    ) as ac:
+        wf_res = await ac.post(
+            "/api/v1/workflows",
+            json={"workflow_name": "long-poll-test", "metadata": {}},
+        )
+        assert wf_res.status_code == 201
+        wf_id = wf_res.json()["id"]
+
+        # 1. Short empty long-poll should return 204 after timeout
+        empty_res = await ac.post(
+            "/api/v1/steps/poll",
+            json={"timeout_seconds": 0.1, "worker_name": "lp-worker"},
+        )
+        assert empty_res.status_code == 204
+
+        # 2. Long-poll held for 28s should wake up promptly once step is queued
+        async def do_long_poll():
+            return await ac.post(
+                "/api/v1/steps/poll",
+                json={"timeout_seconds": 28.0, "worker_name": "lp-worker"},
+            )
+
+        poll_task = asyncio.create_task(do_long_poll())
+        await asyncio.sleep(0.5)
+
+        step_res = await ac.post(
+            "/api/v1/steps",
+            json={"workflow_id": wf_id, "step_name": "wakeup-step"},
+        )
+        assert step_res.status_code == 201
+        step_id = step_res.json()["id"]
+        step_created_at = time.monotonic()
+
+        poll_res = await poll_task
+        post_step_elapsed = time.monotonic() - step_created_at
+
+        assert poll_res.status_code == 200
+        assert poll_res.json()["id"] == step_id
+        assert post_step_elapsed < 15.0

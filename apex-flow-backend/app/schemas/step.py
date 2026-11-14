@@ -30,6 +30,7 @@ class StepPollRequest(BaseModel):
     lock_duration_seconds: int = Field(default=300, ge=5, le=3600)
     worker_id: Optional[uuid.UUID] = None
     worker_name: Optional[str] = "python-worker"
+    timeout_seconds: float = Field(default=0.0, ge=0.0, le=30.0)
 
 
 # Payload sent by SDK worker when reporting step execution status

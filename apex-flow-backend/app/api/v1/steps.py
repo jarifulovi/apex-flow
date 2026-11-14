@@ -72,7 +72,7 @@ async def create_step(
     Queue a new step under an existing workflow run.
     Requires X-ApexFlow-Project-Key header.
     """
-    return await StepService.create_step(db=db, payload=payload)
+    return await StepService.create_step(db=db, payload=payload, project_id=key_ctx.project_id)
 
 
 @router.post("/steps/poll", response_model=Optional[WorkflowStepResponse])
@@ -107,4 +107,4 @@ async def report_step_status(
     Handles retry limits and updates parent workflow run status.
     Requires X-ApexFlow-Project-Key header.
     """
-    return await StepService.report_step_status(db=db, payload=payload)
+    return await StepService.report_step_status(db=db, payload=payload, project_id=key_ctx.project_id)

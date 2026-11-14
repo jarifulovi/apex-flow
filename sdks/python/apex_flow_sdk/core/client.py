@@ -30,6 +30,7 @@ class ApexFlowClient:
         default_backoff_factor: float = 2.0,
         store_payloads: bool = True,
         poll_interval_seconds: float = 0.5,
+        poll_timeout_seconds: float = 20.0,
     ):
         resolved_url = base_url or os.getenv("APEXFLOW_BASE_URL") or "http://127.0.0.1:8000"
         self.base_url = resolved_url.rstrip("/")
@@ -40,6 +41,7 @@ class ApexFlowClient:
         self.default_backoff_factor = default_backoff_factor
         self.store_payloads = store_payloads
         self.poll_interval_seconds = poll_interval_seconds
+        self.poll_timeout_seconds = poll_timeout_seconds
         self._workflows: Dict[str, Callable] = {}
         self._step_handlers: Dict[str, Callable] = {}
 
@@ -47,7 +49,10 @@ class ApexFlowClient:
         if self.project_key:
             headers["X-ApexFlow-Project-Key"] = self.project_key
 
-        self.http_client = httpx.AsyncClient(timeout=30.0, headers=headers)
+        self.http_client = httpx.AsyncClient(
+            timeout=max(35.0, poll_timeout_seconds + 15.0),
+            headers=headers,
+        )
 
     async def _request_with_retry(
         self,
@@ -222,12 +227,14 @@ class ApexFlowClient:
         step_names: Optional[List[str]] = None,
         poll_interval: Optional[float] = None,
         run_once: bool = False,
+        poll_timeout: Optional[float] = None,
     ):
         """
         Start an asynchronous worker loop polling for queued steps from the control plane.
         Includes graceful signal shutdown (SIGINT / SIGTERM) and network drop auto-retry.
         """
         interval = poll_interval if poll_interval is not None else self.poll_interval_seconds
+        hold_timeout = 0.0 if run_once else (poll_timeout if poll_timeout is not None else self.poll_timeout_seconds)
         print(f"🚀 ApexFlow Worker '{self.worker_name}' started. Polling control plane at '{self.base_url}'...")
         await self.send_heartbeat()
 
@@ -248,11 +255,13 @@ class ApexFlowClient:
 
         try:
             while not stop_event.is_set():
+                sleep_after_poll = False
                 try:
                     poll_payload = {
                         "step_names": step_names,
                         "worker_name": self.worker_name,
                         "lock_duration_seconds": 300,
+                        "timeout_seconds": hold_timeout,
                     }
                     res = await self.http_client.post(f"{self.base_url}/api/v1/steps/poll", json=poll_payload)
 
@@ -317,9 +326,10 @@ class ApexFlowClient:
                                 await wf_func(ctx, input_payload)
 
                     elif res.status_code == 204:
-                        pass
+                        sleep_after_poll = hold_timeout <= 0
                     else:
                         consecutive_poll_errors += 1
+                        sleep_after_poll = True
 
                 except Exception as e:
                     if not stop_event.is_set():
@@ -337,10 +347,11 @@ class ApexFlowClient:
                 if run_once or stop_event.is_set():
                     break
 
-                try:
-                    await asyncio.wait_for(stop_event.wait(), timeout=interval)
-                except asyncio.TimeoutError:
-                    pass
+                if sleep_after_poll and interval > 0:
+                    try:
+                        await asyncio.wait_for(stop_event.wait(), timeout=interval)
+                    except asyncio.TimeoutError:
+                        pass
 
         finally:
             print(f"👋 Worker '{self.worker_name}' stopped cleanly.")

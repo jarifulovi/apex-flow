@@ -1,3 +1,4 @@
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -8,6 +9,7 @@ from app.models.step import WorkflowStep
 from app.models.workflow_run import WorkflowRun
 from app.schemas.step import StepPollRequest
 from app.schemas.worker import WorkerHeartbeatRequest
+from app.services.steps.notifier import QueueNotifier
 from app.services.workers.worker_service import WorkerService
 
 
@@ -114,32 +116,29 @@ class QueueService:
         return len(timed_out_runs)
 
     @staticmethod
-    async def poll_next_step(
+    async def _claim_available_step(
         db: AsyncSession,
         project_id: uuid.UUID,
-        payload: Optional[StepPollRequest] = None,
+        poll_payload: StepPollRequest,
+        run_housekeeping: bool = True,
     ) -> Optional[WorkflowStep]:
-        """
-        Poll the next queued step using PostgreSQL FOR UPDATE SKIP LOCKED.
-        Supports targeted step_names filtering, priority ordering, lease locking, and worker heartbeat updating.
-        """
         now = datetime.now(timezone.utc)
 
-        # 1. Recover any expired step locks and timed-out workflows for this project
-        await QueueService.recover_stale_locks(db=db, project_id=project_id)
-        await QueueService.recover_timed_out_workflows(db=db, project_id=project_id)
+        if run_housekeeping:
+            # 1. Recover any expired step locks and timed-out workflows for this project
+            await QueueService.recover_stale_locks(db=db, project_id=project_id)
+            await QueueService.recover_timed_out_workflows(db=db, project_id=project_id)
 
-        # 2. Register worker heartbeat if worker info provided
-        poll_payload = payload or StepPollRequest()
-        if poll_payload.worker_name or poll_payload.worker_id:
-            await WorkerService.register_or_heartbeat(
-                db=db,
-                project_id=project_id,
-                payload=WorkerHeartbeatRequest(
-                    name=poll_payload.worker_name or "python-worker",
-                    worker_id=poll_payload.worker_id,
-                ),
-            )
+            # 2. Register worker heartbeat if worker info provided
+            if poll_payload.worker_name or poll_payload.worker_id:
+                await WorkerService.register_or_heartbeat(
+                    db=db,
+                    project_id=project_id,
+                    payload=WorkerHeartbeatRequest(
+                        name=poll_payload.worker_name or "python-worker",
+                        worker_id=poll_payload.worker_id,
+                    ),
+                )
 
         # 3. Query next available queued step (priority first, then available_at, then FIFO created_at)
         stmt = (
@@ -171,6 +170,8 @@ class QueueService:
         step = result.scalar_one_or_none()
 
         if not step:
+            # Release DB transaction/connection before sleeping on long-poll wait
+            await db.commit()
             return None
 
         # 4. Acquire step atomically: transition to running only if still 'queued'
@@ -203,3 +204,48 @@ class QueueService:
         await db.commit()
         await db.refresh(step)
         return step
+
+    @staticmethod
+    async def poll_next_step(
+        db: AsyncSession,
+        project_id: uuid.UUID,
+        payload: Optional[StepPollRequest] = None,
+    ) -> Optional[WorkflowStep]:
+        """
+        Poll the next queued step using PostgreSQL FOR UPDATE SKIP LOCKED.
+        Supports targeted step_names filtering, priority ordering, lease locking,
+        worker heartbeat updating, and asyncio long-polling up to timeout_seconds.
+        """
+        poll_payload = payload or StepPollRequest()
+        deadline: Optional[float] = None
+        first_attempt = True
+
+        while True:
+            event = (
+                QueueNotifier.get_event(project_id)
+                if poll_payload.timeout_seconds > 0
+                else None
+            )
+            step = await QueueService._claim_available_step(
+                db=db,
+                project_id=project_id,
+                poll_payload=poll_payload,
+                run_housekeeping=first_attempt,
+            )
+            first_attempt = False
+            if step is not None:
+                return step
+
+            if poll_payload.timeout_seconds <= 0:
+                return None
+
+            if deadline is None:
+                deadline = time.monotonic() + poll_payload.timeout_seconds
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+
+            notified = await QueueNotifier.wait(project_id, remaining, event=event)
+            if not notified:
+                return None
