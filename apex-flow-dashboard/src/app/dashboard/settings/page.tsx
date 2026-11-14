@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Header } from "@/components/shared/Header";
 import { useAuth } from "@/features/auth/hooks";
 import { useProject } from "@/features/projects/context";
 import { Button } from "@/components/ui/button";
@@ -89,29 +88,31 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="dashboard-page">
-      <Header
-        title="Project & Control Plane Settings"
-        subtitle={`Configure defaults, webhook alerts, data retention, and settings for ${currentProject?.name || "your project"}`}
-        actions={
-          <Button
-            onClick={handleSaveSettings}
-            disabled={saving}
-            className="bg-violet-600 hover:bg-violet-500 text-white text-xs gap-1.5 shadow-lg shadow-violet-600/20"
-          >
-            {saving ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : saveSuccess ? (
-              <Check size={13} className="text-emerald-300" />
-            ) : (
-              <Save size={13} />
-            )}
-            <span>{saving ? "Saving..." : saveSuccess ? "Saved!" : "Save Changes"}</span>
-          </Button>
-        }
-      />
+    <div className="dashboard-page p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-bold text-zinc-100">Project &amp; Control Plane Settings</h1>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Configure defaults, webhook alerts, and data retention for {currentProject?.name || "your project"}
+          </p>
+        </div>
+        <Button
+          onClick={handleSaveSettings}
+          disabled={saving}
+          className="bg-violet-600 hover:bg-violet-500 text-white text-xs gap-1.5 shadow-lg shadow-violet-600/20 h-8 px-3"
+        >
+          {saving ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : saveSuccess ? (
+            <Check size={13} className="text-emerald-300" />
+          ) : (
+            <Save size={13} />
+          )}
+          <span>{saving ? "Saving..." : saveSuccess ? "Saved!" : "Save Changes"}</span>
+        </Button>
+      </div>
 
-      <div className="page-content space-y-6">
+      <div className="space-y-6">
         {/* Sub-Navigation Tabs */}
         <div className="flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
           <button

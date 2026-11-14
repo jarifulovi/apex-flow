@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Header } from "@/components/shared/Header";
 import { GitBranch, Loader2, RefreshCw, Search, Layers } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
 import { useProject } from "@/features/projects/context";
@@ -121,62 +120,55 @@ export default function WorkflowsPage() {
   };
 
   return (
-    <div className="dashboard-page">
-      <Header
-        title="Workflows"
-        subtitle={`Workflow definitions catalog and execution history for ${currentProject?.name || "your project"}`}
-        actions={
+    <div className="dashboard-page p-6 space-y-6">
+      {/* Top View Mode Switcher, Search & Refresh */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="filter-tabs w-full sm:w-auto" role="tablist" aria-label="Workflow view mode">
+          <button
+            role="tab"
+            aria-selected={viewMode === "definitions"}
+            id="tab-view-definitions"
+            className={`filter-tab${viewMode === "definitions" ? " filter-tab--active" : ""}`}
+            onClick={() => handleViewModeChange("definitions")}
+          >
+            <span>Workflow Definitions</span>
+          </button>
+          <button
+            role="tab"
+            aria-selected={viewMode === "runs"}
+            id="tab-view-runs"
+            className={`filter-tab${viewMode === "runs" ? " filter-tab--active" : ""}`}
+            onClick={() => handleViewModeChange("runs")}
+          >
+            <span>All Execution Runs</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="relative w-full sm:w-64">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <Input
+              type="text"
+              placeholder={viewMode === "definitions" ? "Search workflows..." : "Search runs by name/id..."}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 h-8 bg-[#161620] border-white/10 text-xs text-zinc-200 focus:border-violet-500"
+            />
+          </div>
+
           <Button
             onClick={handleRefresh}
             variant="outline"
             size="sm"
-            className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs gap-1.5"
+            className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs h-8 px-2.5 gap-1.5 shrink-0"
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
             <span>Refresh</span>
           </Button>
-        }
-      />
-
-      <div className="page-content space-y-6">
-        {/* Top View Mode Switcher & Search */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="filter-tabs w-full sm:w-auto" role="tablist" aria-label="Workflow view mode">
-            <button
-              role="tab"
-              aria-selected={viewMode === "definitions"}
-              id="tab-view-definitions"
-              className={`filter-tab${viewMode === "definitions" ? " filter-tab--active" : ""}`}
-              onClick={() => handleViewModeChange("definitions")}
-            >
-              <span>Workflow Definitions</span>
-            </button>
-            <button
-              role="tab"
-              aria-selected={viewMode === "runs"}
-              id="tab-view-runs"
-              className={`filter-tab${viewMode === "runs" ? " filter-tab--active" : ""}`}
-              onClick={() => handleViewModeChange("runs")}
-            >
-              <span>All Execution Runs</span>
-            </button>
-          </div>
-
-          <div className="relative w-full sm:w-64">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <Input
-              placeholder={
-                viewMode === "definitions"
-                  ? "Search workflow definitions..."
-                  : "Search by name, ID, or dedup..."
-              }
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-9 bg-[#161620] border-white/10 text-zinc-100 text-xs focus:border-violet-500"
-            />
-          </div>
         </div>
+      </div>
 
+      <div className="space-y-6">
         {viewMode === "runs" && (
           <div className="filter-tabs w-full overflow-x-auto" role="tablist" aria-label="Workflow status filter">
             {STATUS_FILTERS.map((s) => (

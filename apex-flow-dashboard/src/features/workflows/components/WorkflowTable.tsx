@@ -111,7 +111,7 @@ export function WorkflowTable({ workflows }: { workflows: Workflow[] }) {
                 </td>
                 <td>
                   <Link
-                    href={`/dashboard/workflows/${wf.id}`}
+                    href={`/dashboard/workflows/${encodeURIComponent(wf.workflow_name || "workflow")}/${wf.id}`}
                     className="px-3 py-1.5 rounded-lg bg-violet-600/15 hover:bg-violet-600 border border-violet-500/30 hover:border-violet-500 text-xs font-semibold text-violet-300 hover:text-white transition-all flex items-center gap-1.5 shadow-sm"
                     aria-label={`View workflow ${name}`}
                   >
@@ -197,7 +197,7 @@ export function WorkflowDefinitionTable({ definitions }: { definitions: Workflow
         </thead>
         <tbody>
           {definitions.map((def) => {
-            const href = `/dashboard/workflows/definitions/${encodeURIComponent(def.workflow_name)}`;
+            const href = `/dashboard/workflows/${encodeURIComponent(def.workflow_name)}`;
             return (
               <tr key={def.workflow_name}>
                 <td>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Header } from "@/components/shared/Header";
 import { Footprints, Loader2, RefreshCw, Search } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
 import { useProject } from "@/features/projects/context";
@@ -86,27 +85,10 @@ export default function StepsPage() {
   };
 
   return (
-    <div className="dashboard-page">
-      <Header
-        title="Execution Step Queues"
-        subtitle={`Track execution status, retries, and durations for ${currentProject?.name || "your project"}`}
-        actions={
-          <Button
-            onClick={handleRefresh}
-            variant="outline"
-            size="sm"
-            className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-[#e4e4e7] text-xs gap-1.5 hover:bg-[#252536]"
-          >
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-            <span>Refresh</span>
-          </Button>
-        }
-      />
-
-      <div className="page-content space-y-6">
-        {/* Filter & Search Bar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="filter-tabs w-full sm:w-auto overflow-x-auto" role="tablist" aria-label="Step status filter">
+    <div className="dashboard-page p-6 space-y-6">
+      {/* Filter & Search Bar with Refresh */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="filter-tabs w-full sm:w-auto overflow-x-auto" role="tablist" aria-label="Step status filter">
             {ALL_STATUSES.map((s) => (
               <button
                 key={s}
@@ -130,9 +112,19 @@ export default function StepsPage() {
               placeholder="Search steps or run ID..."
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-9 bg-[#161620] border-white/10 text-zinc-100 text-xs focus:border-violet-500"
+              className="pl-9 h-8 bg-[#161620] border-white/10 text-zinc-100 text-xs focus:border-violet-500"
             />
           </div>
+
+          <Button
+            onClick={handleRefresh}
+            variant="outline"
+            size="sm"
+            className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs h-8 px-2.5 gap-1.5 shrink-0"
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            <span>Refresh</span>
+          </Button>
         </div>
 
         <section className="dashboard-section" aria-labelledby="steps-table-heading">
@@ -163,7 +155,6 @@ export default function StepsPage() {
             </>
           )}
         </section>
-      </div>
     </div>
   );
 }

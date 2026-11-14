@@ -149,7 +149,7 @@ export function StepsTable({ steps }: { steps: WorkflowStep[] }) {
                   </td>
                   <td>
                     <Link
-                      href={`/dashboard/workflows/${wfRunId}`}
+                      href={`/dashboard/workflows/run/${wfRunId}`}
                       className="table-meta font-mono hover:text-violet-300 underline underline-offset-2"
                     >
                       #{wfRunId.slice(0, 8)}

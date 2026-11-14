@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Header } from "@/components/shared/Header";
 import { KeyRound, ShieldCheck, Plus, Loader2 } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
 import { useProject } from "@/features/projects/context";
@@ -62,38 +61,32 @@ export default function ProjectKeysPage() {
   const activeCount = keys.filter((k) => k.status === "active").length;
 
   return (
-    <div className="dashboard-page">
-      <Header
-        title="Project Keys"
-        subtitle={`API keys for SDK workers under ${currentProject?.name || "your project"}`}
-        actions={
-          <button
-            onClick={() => setModalOpen(true)}
-            className="action-btn action-btn--primary"
-          >
-            <Plus size={15} />
-            New Key
-          </button>
-        }
-      />
+    <div className="dashboard-page p-6 flex flex-col gap-6">
+      <div className="info-banner">
+        <ShieldCheck size={16} className="text-violet-400 shrink-0" />
+        <p className="info-banner-text">
+          Keys are shown <strong>once</strong> at creation. Store them securely — ApexFlow only
+          stores a SHA-256 hash. Delete unused keys promptly.
+        </p>
+      </div>
 
-      <div className="page-content flex flex-col gap-6">
-        <div className="info-banner">
-          <ShieldCheck size={16} className="text-violet-400 shrink-0" />
-          <p className="info-banner-text">
-            Keys are shown <strong>once</strong> at creation. Store them securely — ApexFlow only
-            stores a SHA-256 hash. Delete unused keys promptly.
-          </p>
-        </div>
-
-        <section className="dashboard-section" aria-labelledby="keys-heading">
-          <div className="dashboard-section-header">
-            <KeyRound size={15} className="section-icon" />
+      <section className="dashboard-section" aria-labelledby="keys-heading">
+        <div className="dashboard-section-header flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <KeyRound size={15} className="section-icon text-violet-400" />
             <h2 id="keys-heading" className="dashboard-section-title">
               Project Keys
               <span className="section-count">{activeCount} active</span>
             </h2>
           </div>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="action-btn action-btn--primary text-xs h-8 px-3"
+          >
+            <Plus size={14} />
+            New Key
+          </button>
+        </div>
 
           {loading ? (
             <div className="flex items-center justify-center py-12 text-zinc-400">
@@ -109,7 +102,6 @@ export default function ProjectKeysPage() {
         <section aria-label="SDK Quickstart">
           <SDKQuickstart />
         </section>
-      </div>
 
       <CreateKeyModal
         isOpen={modalOpen}

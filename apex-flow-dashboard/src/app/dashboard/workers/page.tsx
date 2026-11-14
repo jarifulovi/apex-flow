@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Header } from "@/components/shared/Header";
 import { Cpu, Loader2, RefreshCw } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks";
 import { useProject } from "@/features/projects/context";
@@ -33,34 +32,28 @@ export default function WorkersPage() {
   }, [loadWorkers]);
 
   return (
-    <div className="dashboard-page">
-      <Header
-        title="Execution Workers"
-        subtitle="Monitor connected python SDK workers polling and executing step queues"
-        actions={
-          <Button
-            onClick={loadWorkers}
-            variant="outline"
-            size="sm"
-            className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs gap-1.5"
-          >
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-            <span>Refresh</span>
-          </Button>
-        }
-      />
-
-      <div className="page-content">
-        <section className="dashboard-section" aria-labelledby="workers-heading">
-          <div className="dashboard-section-header">
-            <Cpu size={15} className="section-icon" />
+    <div className="dashboard-page p-6 space-y-6">
+      <section className="dashboard-section" aria-labelledby="workers-heading">
+        <div className="dashboard-section-header flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Cpu size={15} className="section-icon text-violet-400" />
             <h2 id="workers-heading" className="dashboard-section-title">
               Active Workers
               <span className="section-count">{workers.length}</span>
             </h2>
           </div>
+          <Button
+            onClick={loadWorkers}
+            variant="outline"
+            size="sm"
+            className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs h-8 px-2.5 gap-1.5"
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            <span>Refresh</span>
+          </Button>
+        </div>
 
-          {loading ? (
+        {loading ? (
             <div className="flex items-center justify-center py-12 text-zinc-400">
               <Loader2 size={24} className="animate-spin text-violet-400 mr-2" />
               <span>Loading execution workers...</span>
@@ -69,7 +62,6 @@ export default function WorkersPage() {
             <WorkerList workers={workers} />
           )}
         </section>
-      </div>
     </div>
   );
 }

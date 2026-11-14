@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Header } from "@/components/shared/Header";
 import { TrendingUp, Activity, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/features/auth/hooks";
@@ -59,22 +58,25 @@ export default function DashboardPage() {
   }, [loadDashboard]);
 
   return (
-    <div className="dashboard-page">
-      <Header
-        title="Overview"
-        subtitle={`Telemetry & control plane monitoring for ${currentProject?.name || "your project"}`}
-        actions={
-          <Button
-            onClick={loadDashboard}
-            disabled={loading}
-            variant="outline"
-            className="bg-[#1b1b26] hover:bg-[#232332] text-zinc-300 border-white/10 hover:border-violet-500/40 text-xs h-8 px-2.5 flex items-center gap-1.5"
-          >
-            <RotateCcw size={13} className={`text-violet-400 ${loading ? "animate-spin" : ""}`} />
-            <span>Refresh</span>
-          </Button>
-        }
-      />
+    <div className="dashboard-page p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-bold text-zinc-100">Overview</h1>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Telemetry &amp; control plane monitoring for {currentProject?.name || "your project"}
+          </p>
+        </div>
+        <Button
+          onClick={loadDashboard}
+          disabled={loading}
+          variant="outline"
+          size="sm"
+          className="bg-[#1b1b26] hover:bg-[#232332] text-zinc-300 border-white/10 hover:border-violet-500/40 text-xs h-8 px-2.5 flex items-center gap-1.5"
+        >
+          <RotateCcw size={13} className={`text-violet-400 ${loading ? "animate-spin" : ""}`} />
+          <span>Refresh</span>
+        </Button>
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-zinc-400">

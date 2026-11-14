@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Header } from "@/components/shared/Header";
 import {
   ArrowLeft,
   GitBranch,
@@ -83,7 +82,7 @@ function PayloadButton({ label, payload }: { label: string; payload?: Record<str
   );
 }
 
-export default function WorkflowDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function WorkflowDetailPage({ params }: { params: Promise<{ name: string; id: string }> }) {
   const resolvedParams = use(params);
   const workflowId = resolvedParams.id;
   const router = useRouter();
@@ -155,7 +154,11 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
       const forked = await forkWorkflowRun(accessToken, workflowId, {
         from_step_order: fromStepOrder,
       });
-      router.push(`/dashboard/workflows/${forked.id}`);
+      const targetName =
+        forked.workflow_name ||
+        detail?.workflow_name ||
+        decodeURIComponent(resolvedParams.name || "workflow");
+      router.push(`/dashboard/workflows/${encodeURIComponent(targetName)}/${forked.id}`);
     } catch (err: any) {
       alert(`Failed to fork workflow: ${err?.message || err}`);
       setActionLoading(false);
@@ -164,8 +167,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
 
   if (loading) {
     return (
-      <div className="dashboard-page">
-        <Header title="Workflow Execution Details" />
+      <div className="dashboard-page p-6">
         <div className="flex items-center justify-center py-20 text-zinc-400">
           <Loader2 size={24} className="animate-spin text-violet-400 mr-2" />
           <span>Loading execution timeline...</span>
@@ -176,8 +178,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
 
   if (error || !detail) {
     return (
-      <div className="dashboard-page">
-        <Header title="Workflow Detail" />
+      <div className="dashboard-page p-6">
         <div className="p-8 text-center bg-[#161620] border border-white/10 rounded-xl text-zinc-300 max-w-xl mx-auto my-12">
           <ShieldAlert size={32} className="text-red-400 mx-auto mb-3" />
           <h2 className="text-lg font-bold text-zinc-100">Workflow Not Found</h2>
@@ -193,6 +194,9 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
   }
 
   const name = detail.workflow_name || (detail.metadata?.name as string) || `Workflow #${detail.id.substring(0, 8)}`;
+  const workflowSlug = encodeURIComponent(
+    detail.workflow_name || decodeURIComponent(resolvedParams.name || "workflow")
+  );
   const totalDuration = formatDurationMs(detail.started_at || detail.created_at, detail.completed_at);
 
   const hasRunningOrQueuedSteps = detail.steps.some(
@@ -209,59 +213,54 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
   const canRestart = effectiveStatus === "failed" || effectiveStatus === "cancelled";
 
   return (
-    <div className="dashboard-page">
-      <Header
-        title={name}
-        subtitle={`Workflow Run ID: ${detail.id}`}
-        backUrl={
-          detail.workflow_name
-            ? `/dashboard/workflows/definitions/${encodeURIComponent(detail.workflow_name)}`
-            : "/dashboard/workflows"
-        }
-        actions={
-          <div className="flex items-center gap-2">
+    <div className="dashboard-page p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-bold font-mono text-zinc-100">{name}</h1>
+          <p className="text-xs text-zinc-400 font-mono mt-0.5">Run ID: {detail.id}</p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={loadDetail}
+            disabled={loading || actionLoading}
+            variant="outline"
+            size="sm"
+            className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] hover:bg-[#232332] text-xs h-8 px-2.5 gap-1.5"
+          >
+            <RotateCcw size={13} className={`text-violet-400 ${loading ? "animate-spin" : ""}`} />
+            <span>Refresh</span>
+          </Button>
+
+          {canCancel && (
             <Button
-              onClick={loadDetail}
-              disabled={loading || actionLoading}
+              onClick={handleCancel}
+              disabled={actionLoading}
               variant="outline"
               size="sm"
-              className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] hover:bg-[#232332] text-xs gap-1.5"
+              className="border-red-500/30 text-red-300 hover:text-white bg-red-950/40 hover:bg-red-900/60 text-xs h-8 px-2.5 gap-1.5"
             >
-              <RotateCcw size={13} className={`text-violet-400 ${loading ? "animate-spin" : ""}`} />
-              <span>Refresh</span>
+              {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Ban size={13} />}
+              <span>Cancel Run</span>
             </Button>
+          )}
 
-            {canCancel && (
-              <Button
-                onClick={handleCancel}
-                disabled={actionLoading}
-                variant="outline"
-                size="sm"
-                className="border-red-500/30 text-red-300 hover:text-white bg-red-950/40 hover:bg-red-900/60 text-xs gap-1.5"
-              >
-                {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Ban size={13} />}
-                <span>Cancel Run</span>
-              </Button>
-            )}
+          {canRestart && (
+            <Button
+              onClick={handleRestart}
+              disabled={actionLoading}
+              variant="outline"
+              size="sm"
+              className="border-violet-500/30 text-violet-300 hover:text-white bg-violet-950/40 hover:bg-violet-900/60 text-xs h-8 px-2.5 gap-1.5"
+            >
+              {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+              <span>Restart Run</span>
+            </Button>
+          )}
+        </div>
+      </div>
 
-            {canRestart && (
-              <Button
-                onClick={handleRestart}
-                disabled={actionLoading}
-                variant="outline"
-                size="sm"
-                className="border-violet-500/30 text-violet-300 hover:text-white bg-violet-950/40 hover:bg-violet-900/60 text-xs gap-1.5"
-              >
-                {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-                <span>Restart Run</span>
-              </Button>
-            )}
-
-          </div>
-        }
-      />
-
-      <div className="page-content space-y-6">
+      <div className="space-y-6">
         {/* Workflow Overview Banner */}
         <div className="bg-[#161620] border border-white/10 rounded-xl p-6 shadow-xl grid grid-cols-2 md:grid-cols-5 gap-6">
           <div>
@@ -349,7 +348,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                 <code className="font-mono text-amber-200 font-semibold">{detail.forked_from_id}</code>
               </span>
             </div>
-            <Link href={`/dashboard/workflows/${detail.forked_from_id}`}>
+            <Link href={`/dashboard/workflows/${workflowSlug}/${detail.forked_from_id}`}>
               <Button
                 variant="outline"
                 size="sm"
@@ -371,7 +370,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
                 <code className="font-mono text-cyan-200 font-semibold">{detail.parent_workflow_id}</code>
               </span>
             </div>
-            <Link href={`/dashboard/workflows/${detail.parent_workflow_id}`}>
+            <Link href={`/dashboard/workflows/${workflowSlug}/${detail.parent_workflow_id}`}>
               <Button
                 variant="outline"
                 size="sm"
@@ -394,7 +393,7 @@ export default function WorkflowDetailPage({ params }: { params: Promise<{ id: s
               {childWorkflows.map((child) => (
                 <Link
                   key={child.id}
-                  href={`/dashboard/workflows/${child.id}`}
+                  href={`/dashboard/workflows/${encodeURIComponent(child.workflow_name || "workflow")}/${child.id}`}
                   className="p-3 rounded-lg bg-[#161620] border border-white/10 hover:border-violet-500/40 flex items-center justify-between text-xs transition-colors group"
                 >
                   <div className="truncate pr-2">

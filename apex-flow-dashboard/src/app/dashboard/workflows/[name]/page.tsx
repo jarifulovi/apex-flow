@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { Header } from "@/components/shared/Header";
 import {
   GitBranch,
   Loader2,
@@ -157,25 +156,26 @@ export default function WorkflowDefinitionDetailPage() {
   ];
 
   return (
-    <div className="dashboard-page">
-      <Header
-        title={workflowName || "Workflow Analytics"}
-        subtitle={`Workflow identity analytics and execution history for ${currentProject?.name || "your project"}`}
-        backUrl="/dashboard/workflows"
-        actions={
-          <Button
-            onClick={handleRefresh}
-            variant="outline"
-            size="sm"
-            className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs gap-1.5"
-          >
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-            <span>Refresh</span>
-          </Button>
-        }
-      />
+    <div className="dashboard-page p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-bold font-mono text-zinc-100">{workflowName || "Workflow Analytics"}</h1>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Workflow identity analytics and execution history for {currentProject?.name || "your project"}
+          </p>
+        </div>
+        <Button
+          onClick={handleRefresh}
+          variant="outline"
+          size="sm"
+          className="border-white/10 text-zinc-300 hover:text-white bg-[#1b1b26] text-xs h-8 px-2.5 gap-1.5"
+        >
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          <span>Refresh</span>
+        </Button>
+      </div>
 
-      <div className="page-content space-y-6">
+      <div className="space-y-6">
         {/* Analytics KPI Banner */}
         <section className="dashboard-stats" aria-label="Workflow analytics">
           {statCards.map(({ id, label, value, icon: Icon, color, hint }) => (

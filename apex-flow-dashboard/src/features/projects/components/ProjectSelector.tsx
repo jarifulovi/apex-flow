@@ -57,15 +57,15 @@ export function ProjectSelector() {
       <button
         id="project-selector-btn"
         onClick={() => setDropdownOpen((o) => !o)}
-        className="flex items-center gap-2 bg-[#1b1b26] hover:bg-[#232332] text-zinc-200 border border-white/10 px-3 py-1.5 rounded-lg transition-all text-xs font-medium focus:outline-none focus:ring-1 focus:ring-violet-500"
+        className="flex items-center gap-1.5 h-7 bg-[#1b1b26] hover:bg-[#232332] text-zinc-200 border border-white/10 px-2.5 py-1 rounded-md transition-all text-xs font-medium focus:outline-none focus:ring-1 focus:ring-violet-500"
       >
-        <FolderGit2 size={14} className="text-violet-400 shrink-0" />
+        <FolderGit2 size={13} className="text-violet-400 shrink-0" />
         <span className="truncate max-w-[140px]">{currentProject?.name || "Select Project"}</span>
         <ChevronDown size={12} className="text-zinc-400 shrink-0" />
       </button>
 
       {dropdownOpen && (
-        <div className="absolute right-0 mt-1.5 w-64 bg-[#161620] border border-white/10 rounded-xl shadow-2xl p-1.5 z-50 animate-in fade-in slide-in-from-top-1">
+        <div className="absolute left-0 mt-1.5 w-64 bg-[#161620] border border-white/10 rounded-xl shadow-2xl p-1.5 z-50 animate-in fade-in slide-in-from-top-1">
           <div className="px-2.5 py-1.5 mb-1 border-b border-white/10 flex items-center justify-between">
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
               Projects ({projects.length})
