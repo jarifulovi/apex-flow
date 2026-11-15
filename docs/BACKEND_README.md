@@ -77,6 +77,7 @@ The database engine (`app/core/database.py`) is engineered for production stabil
 ### 2. High-Throughput Scoped Queue Polling & Scheduling (`QueueService`)
 - Uses dialect-aware PostgreSQL `SELECT FOR UPDATE OF WorkflowStep SKIP LOCKED`.
 - **Scheduled & Priority Dequeuing**: Filters steps by `available_at <= now()` and orders queue pickup by `priority ASC, available_at ASC, created_at ASC`, ensuring high-priority steps run first while respecting delayed step schedules.
+- **Event-Driven Long Polling (`QueueNotifier`)**: Workers can issue long-polling requests (`timeout_seconds > 0`). When no steps are immediately ready in the queue, workers suspend non-blockingly on an in-memory asynchronous `QueueNotifier` event without database polling spin. As soon as a step is queued or a delayed step matures, `QueueNotifier` triggers instant worker wakeup.
 - **Lease & Timeout Recovery**:
   - `recover_stale_locks`: Automatically recovers stale step leases (`locked_until < now()`) when worker nodes crash.
   - `recover_timed_out_workflows`: Detects workflow runs exceeding `deadline_at` (`timeout_seconds`), transitions the run to `failed`, and cancels pending/running child steps.
@@ -178,8 +179,14 @@ The backend control plane enforces a **Header-Strict Two-Layer Authentication Mo
 | `/api/v1/keys/{key_id}` | `DELETE` | Supabase JWT | Revoke a project API key by ID. |
 | `/api/v1/projects` | `GET` | Supabase JWT | List projects belonging to the authenticated user. |
 | `/api/v1/projects` | `POST` | Supabase JWT | Create a new project tenant. |
+| `/api/v1/projects/default` | `GET` | Supabase JWT | Get or provision default project for authenticated user. |
+| `/api/v1/projects/{project_id}` | `GET` | Supabase JWT | Retrieve project metadata by ID. |
+| `/api/v1/projects/{project_id}` | `DELETE` | Supabase JWT | Delete project and associated records. |
+| `/api/v1/projects/{project_id}/overview` | `GET` | Supabase JWT | Consolidated project telemetry (stats, recent activities, status flags). |
+| `/api/v1/projects/{project_id}/metrics` | `GET` | Supabase JWT | Aggregated project execution metrics (success rate, workers, avg duration). |
 | `/api/v1/workflows` | `POST` | Project API Key | Create, debounced buffer, or deduplicate a workflow run execution state. |
 | `/api/v1/workflows` | `GET` | Bearer / Key | List workflow runs (paginated & filtered). |
+| `/api/v1/workflows/definitions` | `GET` | Bearer / Key | List unique workflow definitions with aggregated run metrics. |
 | `/api/v1/workflows/stats` | `GET` | Bearer / Key | Get workflow run status breakdown counts for UI tabs. |
 | `/api/v1/workflows/{id}` | `GET` | Bearer / Key | Fetch workflow run detail and ordered step execution timeline. |
 | `/api/v1/workflows/{id}/fork` | `POST` | Bearer / Key | Fork workflow from step order $N$ with prior checkpoints memoized. |
@@ -187,7 +194,7 @@ The backend control plane enforces a **Header-Strict Two-Layer Authentication Mo
 | `/api/v1/workflows/{id}/cancel` | `POST` | Bearer / Key | Cancel active workflow run and mark queued steps cancelled. |
 | `/api/v1/workflows/{id}/restart` | `POST` | Bearer / Key | Reset failed/cancelled steps to queued and restart run. |
 | `/api/v1/steps` | `POST` | Project API Key | Queue a new step under a workflow run (with optional delay & priority). |
-| `/api/v1/steps/poll` | `POST` | Project API Key | Poll next queued step using `FOR UPDATE SKIP LOCKED` (priority & available_at). |
+| `/api/v1/steps/poll` | `POST` | Project API Key | Poll next queued step with optional `timeout_seconds` long polling (`FOR UPDATE SKIP LOCKED`). |
 | `/api/v1/steps/report` | `POST` | Project API Key | Report worker step execution result (`success` / `failed`). |
 | `/api/v1/workers` | `GET` | Bearer / Key | List connected execution workers for a project. |
 | `/api/v1/workers/heartbeat` | `POST` | Project API Key | Register a worker or record an active heartbeat. |

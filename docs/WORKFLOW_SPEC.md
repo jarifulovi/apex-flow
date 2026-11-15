@@ -115,6 +115,17 @@ ApexFlow supports launching **sub-workflows** from within parent workflow contex
 - **Dashboard Execution Tree**: Allows visual dashboard inspectors to render nested execution trees and trace parent-child status propagation.
 - **Modular Isolation**: Sub-workflows maintain independent retry budgets, step order sequences, and status lifecycles.
 
+### Observability Navigation & Workflow Routing Model
+In the dashboard console, workflows and their step executions are structured in a nested hierarchy:
+1. **Workflow Definitions Catalog** (`/dashboard/workflows`): Aggregated overview of all unique registered workflow pipelines with total runs, completion success rates, active vs. failed run counts, and average durations.
+2. **Workflow Definition Runs** (`/dashboard/workflows/{workflow_name}`): Filtered table of execution runs belonging to a specific workflow definition.
+3. **Workflow Run Execution & Steps Timeline** (`/dashboard/workflows/{workflow_name}/{workflow_run_id}`): Comprehensive execution inspection for an individual run, featuring:
+   - Real-time run status badges and execution metrics.
+   - Sequential timeline of all executed steps (ordered by `step_order`), complete with attempt counts, execution duration, and payload inspector.
+   - Error Inspector modal for failed steps.
+   - Child sub-workflow lineage tree navigation and time-travel forking actions.
+   *(Note: Step executions are inspected in-context under their parent workflow run, eliminating fragmented standalone steps tables).*
+
 ### Cascading Lifecycle State Behaviors:
 
 | Action / Event | Behavior on Parent Workflow | Behavior on Child Sub-Workflows |
@@ -131,9 +142,10 @@ ApexFlow supports launching **sub-workflows** from within parent workflow contex
 | Action | Endpoint | Purpose |
 | :--- | :--- | :--- |
 | **Trigger Workflow** | `POST /api/v1/workflows` | Register, debounce, or deduplicate a master workflow run. |
+| **List Definitions** | `GET /api/v1/workflows/definitions` | Retrieve unique workflow definitions with aggregated run metrics. |
 | **Fork Workflow** | `POST /api/v1/workflows/{id}/fork` | Fork workflow from step $N$ with prior checkpoints memoized. |
 | **Queue Step** | `POST /api/v1/steps` | Register an individual step in `QUEUED` state (with delay & priority). |
-| **Poll Step** | `POST /api/v1/steps/poll` | Acquire next queued step via row-level locking. |
+| **Poll Step** | `POST /api/v1/steps/poll` | Acquire next queued step via row-level locking (supports `timeout_seconds` long polling). |
 | **Report Status** | `POST /api/v1/steps/report` | Update step status (`SUCCESS` / `FAILED`) with exponential backoff. |
 | **Complete Workflow** | `POST /api/v1/workflows/{id}/complete` | Transition run to `COMPLETED`. |
 | **Cancel Run** | `POST /api/v1/workflows/{id}/cancel` | Cancel active run, pending steps, and child workflows. |

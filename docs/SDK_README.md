@@ -113,6 +113,8 @@ The SDK is **not merely a thin HTTP wrapper** for the control plane. It encapsul
 ### 12. Advanced Flow Control & Scheduling
 - **Delayed Step Execution (`delay_seconds`)**: Steps can declare `delay_seconds`, hiding them from worker queue polling until `available_at` timestamp matures.
 - **Priority Queuing (`priority`)**: Steps accept an integer `priority` (default `0`), dequeued in ascending order (`0` = highest priority) to protect against starvation from bulk batch jobs.
+- **Worker Long Polling**: Workers poll with `timeout_seconds` (default 10s), holding the connection open on the control plane and waking instantly on step availability to eliminate CPU-intensive spin polling.
+- **Duplicate Registration Guard**: The SDK client strictly prevents accidental naming collisions by raising `ValueError` if a workflow name or step function is registered more than once.
 - **Workflow-Level Deadlines (`timeout_seconds`)**: Workflows can declare run timeouts; runs exceeding `deadline_at` are automatically failed and orphan steps cancelled.
 - **Event Debouncing (`debounce_seconds`, `max_debounce_seconds`)**: Coalesces rapid triggers sharing the same `deduplication_id` within a sliding window into a single execution.
 - **Time-Travel Debugging & Forking (`fork_workflow`)**: Clones workflow execution state up to step $N-1$ and launches a new branch from step $N$.
@@ -142,8 +144,8 @@ All language SDKs communicate with the backend control plane via HTTP REST endpo
    - *Returns*: Queued step metadata (`id`, `status`, `available_at`, `priority`).
 
 4. **Poll Step**: `POST /api/v1/steps/poll`
-   - *Payload*: `{"worker_name": "...", "worker_id": "...", "step_names": [...]}`
-   - *Returns*: Next available step payload (matching `available_at <= now()`, ordered by priority) or `204 No Content`.
+   - *Payload*: `{"worker_name": "...", "worker_id": "...", "step_names": [...], "timeout_seconds": 10.0}`
+   - *Returns*: Next available step payload (matching `available_at <= now()`, ordered by priority) or `204 No Content` on timeout.
 
 5. **Report Step Status**: `POST /api/v1/steps/report`
    - *Payload*: `{"step_id": "<uuid>", "status": "success" | "failed", "output_payload": {...}, "error_message": "...", "retry_delay_seconds": 5}`
