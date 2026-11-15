@@ -1,11 +1,9 @@
-import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_current_project_key_context,
-    get_current_user_from_headers,
 )
 from app.core.database import get_db
 from app.schemas.project import ProjectKeyContext
@@ -18,48 +16,6 @@ from app.schemas.step import (
 from app.services.steps import QueueService, StepService
 
 router = APIRouter()
-
-
-@router.get("/steps/stats")
-async def get_step_stats(
-    project_id: Optional[uuid.UUID] = None,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Get execution step status breakdown counts for filter tabs.
-    """
-    return await StepService.get_step_status_counts(
-        db=db, owner_id=authenticated_user_id, project_id=project_id
-    )
-
-
-@router.get("/steps", response_model=list[WorkflowStepResponse])
-async def list_steps(
-    response: Response,
-    project_id: Optional[uuid.UUID] = None,
-    status: Optional[str] = None,
-    search: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
-    authenticated_user_id: uuid.UUID = Depends(get_current_user_from_headers),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    List workflow execution steps. Accepts Bearer JWT (Dashboard UI) or Project Key (Workers).
-    """
-    items, total_count = await StepService.list_steps(
-        db=db,
-        owner_id=authenticated_user_id,
-        project_id=project_id,
-        status_filter=status,
-        search=search,
-        limit=limit,
-        offset=offset,
-    )
-    response.headers["X-Total-Count"] = str(total_count)
-    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count"
-    return items
 
 
 @router.post("/steps", response_model=WorkflowStepResponse, status_code=status.HTTP_201_CREATED)

@@ -187,8 +187,6 @@ The backend control plane enforces a **Header-Strict Two-Layer Authentication Mo
 | `/api/v1/workflows/{id}/cancel` | `POST` | Bearer / Key | Cancel active workflow run and mark queued steps cancelled. |
 | `/api/v1/workflows/{id}/restart` | `POST` | Bearer / Key | Reset failed/cancelled steps to queued and restart run. |
 | `/api/v1/steps` | `POST` | Project API Key | Queue a new step under a workflow run (with optional delay & priority). |
-| `/api/v1/steps` | `GET` | Bearer / Key | List workflow execution steps with pagination & filtering. |
-| `/api/v1/steps/stats` | `GET` | Bearer / Key | Get step execution status breakdown counts for UI tabs. |
 | `/api/v1/steps/poll` | `POST` | Project API Key | Poll next queued step using `FOR UPDATE SKIP LOCKED` (priority & available_at). |
 | `/api/v1/steps/report` | `POST` | Project API Key | Report worker step execution result (`success` / `failed`). |
 | `/api/v1/workers` | `GET` | Bearer / Key | List connected execution workers for a project. |

@@ -14,7 +14,6 @@ interface BreadcrumbItem {
 }
 
 const SECTION_LABELS: Record<string, string> = {
-  steps: "steps",
   workers: "workers",
   "project-keys": "keys",
   settings: "settings",

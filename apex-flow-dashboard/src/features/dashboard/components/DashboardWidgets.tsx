@@ -1,7 +1,6 @@
 import React from "react";
 import {
   GitBranch,
-  Footprints,
   KeyRound,
   CheckCircle2,
   Clock,
@@ -131,7 +130,6 @@ export function QuickNav() {
   const links = [
     { href: "/dashboard/workflows",   label: "Workflows",    desc: "Browse and inspect workflow runs", icon: GitBranch, color: "violet" },
     { href: "/dashboard/workers",     label: "Workers",      desc: "Connected SDK workers status",     icon: Cpu,       color: "cyan" },
-    { href: "/dashboard/steps",       label: "Steps",        desc: "Monitor step execution queues",    icon: Footprints, color: "amber" },
     { href: "/dashboard/project-keys", label: "Project Keys", desc: "Manage worker authentication",    icon: KeyRound,   color: "violet" },
   ];
 

@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   GitBranch,
-  Footprints,
   Cpu,
   KeyRound,
   Settings,
@@ -24,7 +23,6 @@ const COLLAPSE_STORAGE_KEY = "apexflow_sidebar_collapsed";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/workflows", label: "Workflows", icon: GitBranch },
-  { href: "/dashboard/steps", label: "Steps", icon: Footprints },
   { href: "/dashboard/workers", label: "Workers", icon: Cpu },
   { href: "/dashboard/project-keys", label: "Project Keys", icon: KeyRound },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },

@@ -1,8 +1,7 @@
 import { getWorkflows } from "@/features/workflows/api";
-import { getSteps } from "@/features/steps/api";
 import { getProjectKeys } from "@/features/project-keys/api";
 import { getWorkers } from "@/features/workers/api";
-import { getProjectMetrics } from "@/features/projects/api";
+import { getProjectMetrics, getProjectOverview } from "@/features/projects/api";
 
 export interface DashboardStats {
   totalWorkflows: number;
@@ -23,8 +22,6 @@ export interface ActivityItem {
   timestamp: string;
   errorMessage?: string | null;
 }
-
-import { getProjectOverview } from "@/features/projects/api";
 
 export async function fetchDashboardOverview(token: string, projectId?: string) {
   if (projectId) {
@@ -60,21 +57,19 @@ export async function fetchDashboardOverview(token: string, projectId?: string) 
     }
   }
 
-  const [workflowsRes, stepsRes, keys, workers, metrics] = await Promise.all([
+  const [workflowsRes, keys, workers, metrics] = await Promise.all([
     getWorkflows(token, projectId, "all", 10, 0).catch(() => ({ data: [], totalCount: 0 })),
-    getSteps(token, projectId, "all", 10, 0).catch(() => ({ data: [], totalCount: 0 })),
     getProjectKeys(token, projectId).catch(() => []),
     getWorkers(token, projectId).catch(() => []),
     projectId ? getProjectMetrics(token, projectId).catch(() => null) : Promise.resolve(null),
   ]);
 
   const workflows = workflowsRes.data;
-  const steps = stepsRes.data;
 
   const totalWorkflows = metrics?.total_runs ?? workflowsRes.totalCount;
-  const activeSteps = steps.filter((s) => s.status === "queued" || s.status === "running").length;
-  const completedSteps = steps.filter((s) => s.status === "success").length;
-  const failedSteps = steps.filter((s) => s.status === "failed").length;
+  const activeSteps = workflows.filter((w) => w.status === "running" || w.status === "pending").length;
+  const completedSteps = workflows.filter((w) => w.status === "completed").length;
+  const failedSteps = workflows.filter((w) => w.status === "failed").length;
   const activeKeysCount = keys.filter((k) => k.status === "active").length;
 
   const now = Date.now();
@@ -88,15 +83,15 @@ export async function fetchDashboardOverview(token: string, projectId?: string) 
   );
   const avgDurationSeconds = metrics?.avg_duration_seconds ?? 0.0;
 
-  const activities: ActivityItem[] = steps
+  const activities: ActivityItem[] = workflows
     .slice(0, 6)
-    .map((s) => ({
-      id: s.id,
-      workflowId: s.workflow_run_id || (s as any).workflow_id,
-      stepName: s.step_name,
-      status: s.status,
-      timestamp: s.updated_at || s.created_at,
-      errorMessage: s.error_message,
+    .map((w) => ({
+      id: w.id,
+      workflowId: w.id,
+      stepName: w.workflow_name,
+      status: (w.status === "completed" ? "success" : w.status) as ActivityItem["status"],
+      timestamp: w.updated_at || w.created_at,
+      errorMessage: w.error_message,
     }));
 
   return {

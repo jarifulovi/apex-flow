@@ -217,22 +217,25 @@ async def test_simulated_transient_failure_worker_auto_retry(test_client_harness
 
     # Attempt 1: fails & re-queues
     await client.start_worker(step_names=["transient_api_step"], poll_interval=0.01, run_once=True)
-    step_res1 = await client.http_client.get(f"/api/v1/steps?limit=10")
-    s1 = [s for s in step_res1.json() if s["workflow_run_id"] == str(run_id)][0]
+    wf_res1 = await client.http_client.get(f"/api/v1/workflows/{run_id}")
+    assert wf_res1.status_code == 200
+    s1 = [s for s in wf_res1.json()["steps"] if s["step_name"] == "transient_api_step"][0]
     assert s1["status"] == "queued"
     assert s1["attempt_count"] == 1
 
     # Attempt 2: fails & re-queues
     await client.start_worker(step_names=["transient_api_step"], poll_interval=0.01, run_once=True)
-    step_res2 = await client.http_client.get(f"/api/v1/steps?limit=10")
-    s2 = [s for s in step_res2.json() if s["workflow_run_id"] == str(run_id)][0]
+    wf_res2 = await client.http_client.get(f"/api/v1/workflows/{run_id}")
+    assert wf_res2.status_code == 200
+    s2 = [s for s in wf_res2.json()["steps"] if s["step_name"] == "transient_api_step"][0]
     assert s2["status"] == "queued"
     assert s2["attempt_count"] == 2
 
     # Attempt 3: succeeds!
     await client.start_worker(step_names=["transient_api_step"], poll_interval=0.01, run_once=True)
-    step_res3 = await client.http_client.get(f"/api/v1/steps?limit=10")
-    s3 = [s for s in step_res3.json() if s["workflow_run_id"] == str(run_id)][0]
+    wf_res3 = await client.http_client.get(f"/api/v1/workflows/{run_id}")
+    assert wf_res3.status_code == 200
+    s3 = [s for s in wf_res3.json()["steps"] if s["step_name"] == "transient_api_step"][0]
     assert s3["status"] == "success"
     assert s3["attempt_count"] == 3
 

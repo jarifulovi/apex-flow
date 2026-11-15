@@ -36,9 +36,9 @@ async def test_multi_step_pipeline_execution_and_data_flow(test_client_harness: 
     assert res1["customer_id"] == "CUST-9900"
 
     # Verify backend step 1 state
-    s1_res = await client.http_client.get(f"/api/v1/steps?limit=10")
-    assert s1_res.status_code == 200
-    steps = [s for s in s1_res.json() if s["workflow_run_id"] == str(run_id)]
+    wf_res = await client.http_client.get(f"/api/v1/workflows/{run_id}")
+    assert wf_res.status_code == 200
+    steps = wf_res.json()["steps"]
     step1_data = [s for s in steps if s["step_name"] == "validate-customer"][0]
 
     ApexFlowAssert.assert_step(
