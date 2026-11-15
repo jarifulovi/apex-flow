@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import EntityNotFoundException
@@ -15,6 +15,7 @@ from app.schemas.project import (
     ProjectCreate,
     ProjectMetricsResponse,
     ProjectOverviewResponse,
+    ProjectUpdate,
 )
 
 
@@ -133,6 +134,63 @@ class ProjectService:
             raise EntityNotFoundException("Project", project_id)
 
         return project
+
+    @staticmethod
+    async def update_project(
+        db: AsyncSession,
+        project_id: uuid.UUID,
+        owner_id: uuid.UUID,
+        payload: ProjectUpdate,
+    ) -> Project:
+        """Update project name and webhook alert settings."""
+        project = await ProjectService.get_project_by_id(
+            db=db, project_id=project_id, owner_id=owner_id
+        )
+
+        if payload.name is not None:
+            cleaned_name = payload.name.strip()
+            if not cleaned_name:
+                raise ValueError("Project name cannot be empty.")
+            if cleaned_name != project.name:
+                existing = await db.execute(
+                    select(Project).where(
+                        Project.owner_id == owner_id,
+                        Project.name == cleaned_name,
+                        Project.id != project.id,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    raise ValueError(f"A project named '{cleaned_name}' already exists.")
+                project.name = cleaned_name
+
+        if payload.alerts is not None:
+            meta = dict(project.metadata_ or {})
+            meta["alerts"] = payload.alerts.model_dump()
+            project.metadata_ = meta
+
+        await db.commit()
+        await db.refresh(project)
+        return project
+
+    @staticmethod
+    async def purge_project_logs(
+        db: AsyncSession,
+        project_id: uuid.UUID,
+        owner_id: uuid.UUID,
+    ) -> int:
+        """Purge finished (completed, failed, cancelled) workflow runs and steps for a project."""
+        await ProjectService.get_project_by_id(
+            db=db, project_id=project_id, owner_id=owner_id
+        )
+
+        result = await db.execute(
+            delete(WorkflowRun).where(
+                WorkflowRun.project_id == project_id,
+                WorkflowRun.status.in_(["completed", "failed", "cancelled"]),
+            )
+        )
+        await db.commit()
+        return int(result.rowcount or 0)
 
     @staticmethod
     async def get_project_metrics(
@@ -254,4 +312,3 @@ class ProjectService:
             has_keys=keys_count > 0,
             has_workflows=stats.total_runs > 0,
         )
-

@@ -1,7 +1,7 @@
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import List, Optional
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +9,7 @@ from app.models.step import WorkflowStep
 from app.models.workflow_run import WorkflowRun
 from app.schemas.step import StepPollRequest
 from app.schemas.worker import WorkerHeartbeatRequest
+from app.services.alerts import AlertService
 from app.services.steps.notifier import QueueNotifier
 from app.services.workers.worker_service import WorkerService
 
@@ -37,6 +38,7 @@ class QueueService:
 
         result = await db.execute(stale_query)
         stale_steps = list(result.scalars().all())
+        failed_stale_steps: List[WorkflowStep] = []
 
         for step in stale_steps:
             if step.attempt_count < step.max_attempts:
@@ -48,6 +50,7 @@ class QueueService:
                 step.error_message = "Execution lock expired (worker timeout/crash)."
                 step.completed_at = now
                 step.locked_until = None
+                failed_stale_steps.append(step)
 
                 # Mark parent workflow run failed
                 await db.execute(
@@ -62,6 +65,17 @@ class QueueService:
 
         if stale_steps:
             await db.commit()
+            for failed_step in failed_stale_steps:
+                AlertService.schedule_alert(
+                    db=db,
+                    project_id=project_id,
+                    event_type="step.lock_expired",
+                    workflow_run_id=failed_step.workflow_run_id,
+                    step_name=failed_step.step_name,
+                    attempt_count=failed_step.attempt_count,
+                    max_attempts=failed_step.max_attempts,
+                    error_message=failed_step.error_message,
+                )
 
         return len(stale_steps)
 
@@ -112,6 +126,15 @@ class QueueService:
 
         if timed_out_runs:
             await db.commit()
+            for timed_out_run in timed_out_runs:
+                AlertService.schedule_alert(
+                    db=db,
+                    project_id=timed_out_run.project_id,
+                    event_type="workflow.timed_out",
+                    workflow_run_id=timed_out_run.id,
+                    workflow_name=timed_out_run.workflow_name,
+                    error_message=timed_out_run.error_message,
+                )
 
         return len(timed_out_runs)
 

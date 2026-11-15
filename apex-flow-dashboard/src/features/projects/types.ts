@@ -1,8 +1,28 @@
+import type {
+  AlertWindowSeconds,
+  MaxAlertsPerWindow,
+} from "@/features/settings/types";
+
+export interface ProjectAlertMetadata {
+  webhook_url?: string;
+  alert_on_failure?: boolean;
+  alert_on_timeout?: boolean;
+  alert_on_max_retry?: boolean;
+  window_seconds?: AlertWindowSeconds;
+  max_alerts_per_window?: MaxAlertsPerWindow;
+}
+
+export interface ProjectMetadata {
+  is_default?: boolean;
+  alerts?: ProjectAlertMetadata;
+  [key: string]: unknown;
+}
+
 export interface Project {
   id: string;
   owner_id: string;
   name: string;
-  metadata?: Record<string, unknown>;
+  metadata?: ProjectMetadata;
   created_at: string;
   updated_at: string;
 }
@@ -10,6 +30,30 @@ export interface Project {
 export interface ProjectCreate {
   name: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface ProjectUpdatePayload {
+  name?: string;
+  alerts?: {
+    webhook_url: string;
+    alert_on_failure: boolean;
+    alert_on_timeout: boolean;
+    alert_on_max_retry: boolean;
+    window_seconds: AlertWindowSeconds;
+    max_alerts_per_window: MaxAlertsPerWindow;
+  };
+}
+
+export interface WebhookTestResponse {
+  ok: boolean;
+  status_code: number;
+  provider: string;
+  latency_ms: number;
+  detail: string;
+}
+
+export interface ProjectPurgeResponse {
+  deleted_runs: number;
 }
 
 export interface ProjectMetrics {

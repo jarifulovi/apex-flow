@@ -8,20 +8,27 @@ interface PurgeLogsModalProps {
   isOpen: boolean;
   projectName?: string;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => Promise<void>;
 }
 
 export function PurgeLogsModal({ isOpen, projectName, onClose, onConfirm }: PurgeLogsModalProps) {
   const [purging, setPurging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setPurging(true);
-    setTimeout(() => {
+    setError(null);
+    try {
+      await onConfirm();
+      onClose();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to purge execution logs.";
+      setError(message);
+    } finally {
       setPurging(false);
-      onConfirm();
-    }, 1000);
+    }
   };
 
   return (
@@ -35,11 +42,17 @@ export function PurgeLogsModal({ isOpen, projectName, onClose, onConfirm }: Purg
           Are you sure you want to delete all completed, cancelled, or failed execution logs for{" "}
           <strong className="text-white">{projectName || "this project"}</strong>? This will clear workflow step history.
         </p>
+        {error && (
+          <div className="p-2.5 rounded-md bg-red-500/10 border border-red-500/30 text-red-300 text-xs">
+            {error}
+          </div>
+        )}
         <div className="flex justify-end gap-3 pt-2">
           <Button
             variant="outline"
             size="sm"
             onClick={onClose}
+            disabled={purging}
             className="border-white/10 bg-[#1b1b26] text-zinc-300 text-xs"
           >
             Cancel

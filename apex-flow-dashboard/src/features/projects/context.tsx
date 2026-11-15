@@ -100,7 +100,16 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
     setProjects(list);
     if (currentProject) {
       const refreshed = list.find((p) => p.id === currentProject.id);
-      if (refreshed) setCurrentProject(refreshed);
+      if (refreshed) {
+        setCurrentProject(refreshed);
+      } else if (list.length > 0) {
+        setCurrentProject(list[0]);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(STORAGE_KEY, list[0].id);
+        }
+      } else {
+        setCurrentProject(null);
+      }
     }
   };
 

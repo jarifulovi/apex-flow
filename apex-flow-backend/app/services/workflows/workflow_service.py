@@ -10,6 +10,7 @@ from app.core.exceptions import EntityNotFoundException
 from app.models.workflow_run import WorkflowRun
 from app.models.step import WorkflowStep
 from app.schemas.workflow import WorkflowCreate, WorkflowDefinitionSummary
+from app.services.alerts import AlertService
 from app.services.projects.project_service import ProjectService
 from app.services.steps.notifier import QueueNotifier
 
@@ -391,6 +392,14 @@ class WorkflowService:
                     step.locked_until = None
             await db.commit()
             await db.refresh(workflow_run)
+            AlertService.schedule_alert(
+                db=db,
+                project_id=workflow_run.project_id,
+                event_type="workflow.timed_out",
+                workflow_run_id=workflow_run.id,
+                workflow_name=workflow_run.workflow_name,
+                error_message=workflow_run.error_message,
+            )
 
         # Fetch child sub-workflows for workflow detail in 1 DB query
         sub_query = (

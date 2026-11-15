@@ -9,6 +9,7 @@ from app.core.exceptions import EntityNotFoundException
 from app.models.step import WorkflowStep
 from app.models.workflow_run import WorkflowRun
 from app.schemas.step import StepReportPayload, WorkflowStepCreate
+from app.services.alerts import AlertService
 from app.services.steps.notifier import QueueNotifier
 
 
@@ -123,6 +124,7 @@ class StepService:
         step.locked_until = None
 
         retry_delay = 0.0
+        terminal_failure = False
         if payload.status == "failed":
             if step.attempt_count < step.max_attempts:
                 step.status = "queued"
@@ -137,6 +139,7 @@ class StepService:
 
                 step.available_at = now + timedelta(seconds=retry_delay)
             else:
+                terminal_failure = True
                 step.status = "failed"
                 step.completed_at = now
                 await db.execute(
@@ -168,4 +171,15 @@ class StepService:
         await db.refresh(step)
         if project_id is not None and step.status == "queued":
             QueueNotifier.notify(project_id, delay_seconds=retry_delay)
+        if terminal_failure:
+            AlertService.schedule_alert(
+                db=db,
+                project_id=project_id,
+                event_type="step.max_retries_exhausted",
+                workflow_run_id=step.workflow_run_id,
+                step_name=step.step_name,
+                attempt_count=step.attempt_count,
+                max_attempts=step.max_attempts,
+                error_message=step.error_message,
+            )
         return step

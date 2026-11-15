@@ -3,40 +3,49 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Building2, Copy, Check, AlertTriangle, Trash2 } from "lucide-react";
+import { Building2, Copy, Check, AlertTriangle, Trash2, Loader2, ShieldAlert } from "lucide-react";
 
 interface GeneralSettingsSectionProps {
   projectId?: string;
   projectName: string;
   setProjectName: (val: string) => void;
-  environment: string;
-  setEnvironment: (val: string) => void;
-  region: string;
-  setRegion: (val: string) => void;
-  description: string;
-  setDescription: (val: string) => void;
+  isDefaultProject: boolean;
   onOpenPurgeModal: () => void;
+  onDeleteProject: () => Promise<void>;
 }
 
 export function GeneralSettingsSection({
   projectId,
   projectName,
   setProjectName,
-  environment,
-  setEnvironment,
-  region,
-  setRegion,
-  description,
-  setDescription,
+  isDefaultProject,
   onOpenPurgeModal,
+  onDeleteProject,
 }: GeneralSettingsSectionProps) {
   const [copied, setCopied] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleCopy = () => {
-    const id = projectId || "b64a0476-14b6-454e-92bc-f6c98a68fff1";
-    navigator.clipboard.writeText(id);
+    if (!projectId) return;
+    navigator.clipboard.writeText(projectId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleConfirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDeleteProject();
+      setShowDeleteModal(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete project.";
+      setDeleteError(message);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -48,7 +57,7 @@ export function GeneralSettingsSection({
             Project Identity
           </h3>
           <p className="text-xs text-zinc-400 mt-1">
-            General project metadata used across SDK initialization and control plane dashboard.
+            General project identifier and display name used across your workspace.
           </p>
         </div>
 
@@ -58,35 +67,9 @@ export function GeneralSettingsSection({
             <Input
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
+              maxLength={100}
               className="bg-[#1b1b26] border-white/10 text-zinc-100 text-xs focus:border-violet-500"
             />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-300">Environment Tag</label>
-            <select
-              value={environment}
-              onChange={(e) => setEnvironment(e.target.value)}
-              className="w-full h-9 rounded-md bg-[#1b1b26] border border-white/10 text-zinc-100 text-xs px-3 focus:border-violet-500 focus:outline-none"
-            >
-              <option value="Production">Production</option>
-              <option value="Staging">Staging</option>
-              <option value="Development">Development</option>
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-300">Primary Region</label>
-            <select
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              className="w-full h-9 rounded-md bg-[#1b1b26] border border-white/10 text-zinc-100 text-xs px-3 focus:border-violet-500 focus:outline-none"
-            >
-              <option value="us-east-1">us-east-1 (N. Virginia)</option>
-              <option value="us-west-2">us-west-2 (Oregon)</option>
-              <option value="eu-west-1">eu-west-1 (Ireland)</option>
-              <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
-            </select>
           </div>
 
           <div className="space-y-2">
@@ -94,13 +77,14 @@ export function GeneralSettingsSection({
             <div className="flex items-center gap-2">
               <Input
                 readOnly
-                value={projectId || "b64a0476-14b6-454e-92bc-f6c98a68fff1"}
+                value={projectId || ""}
                 className="bg-[#12121a] border-white/10 text-zinc-400 font-mono text-xs"
               />
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleCopy}
+                disabled={!projectId}
                 className="border-white/10 text-zinc-300 bg-[#1b1b26] hover:bg-[#252536] text-xs h-9 px-3 gap-1.5"
               >
                 {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
@@ -108,16 +92,6 @@ export function GeneralSettingsSection({
               </Button>
             </div>
           </div>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-zinc-300">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            className="w-full rounded-md bg-[#1b1b26] border border-white/10 text-zinc-100 text-xs p-3 focus:border-violet-500 focus:outline-none"
-          />
         </div>
       </div>
 
@@ -131,11 +105,11 @@ export function GeneralSettingsSection({
           Destructive workspace maintenance operations. These actions cannot be undone.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2 border-t border-red-500/10">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-3 border-t border-red-500/10">
           <div>
             <div className="text-xs font-medium text-zinc-200">Purge Finished Execution History</div>
             <div className="text-[11px] text-zinc-400">
-              Removes completed and cancelled workflow runs and step logs for this project.
+              Deletes completed, failed, and cancelled workflow runs and step logs for this project.
             </div>
           </div>
           <Button
@@ -148,7 +122,72 @@ export function GeneralSettingsSection({
             <span>Purge Execution Logs</span>
           </Button>
         </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-3 border-t border-red-500/10">
+          <div>
+            <div className="text-xs font-medium text-zinc-200">Delete Project</div>
+            <div className="text-[11px] text-zinc-400">
+              {isDefaultProject
+                ? "The Default Project cannot be deleted."
+                : "Permanently deletes this project, API keys, workers, and all workflow runs."}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isDefaultProject || !projectId}
+            onClick={() => {
+              setDeleteError(null);
+              setShowDeleteModal(true);
+            }}
+            className="border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-300 disabled:opacity-40 disabled:cursor-not-allowed text-xs gap-1.5 shrink-0"
+          >
+            <Trash2 size={13} />
+            <span>Delete Project</span>
+          </Button>
+        </div>
       </div>
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#161620] border border-red-500/30 rounded-xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-red-400">
+              <ShieldAlert size={22} />
+              <h3 className="font-semibold text-sm">Delete Project Confirmation</h3>
+            </div>
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Are you sure you want to permanently delete{" "}
+              <strong className="text-white">{projectName || "this project"}</strong>? All API keys,
+              workers, workflow runs, and step logs will be removed immediately.
+            </p>
+            {deleteError && (
+              <div className="p-2.5 rounded-md bg-red-500/10 border border-red-500/30 text-red-300 text-xs">
+                {deleteError}
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="border-white/10 bg-[#1b1b26] text-zinc-300 text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-500 text-white text-xs gap-1.5"
+              >
+                {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                <span>{deleting ? "Deleting..." : "Confirm Delete"}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
