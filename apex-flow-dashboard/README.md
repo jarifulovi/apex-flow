@@ -21,6 +21,8 @@ The **ApexFlow Observability Dashboard** provides real-time visibility into work
 - 🔍 **Error Inspector Modal**: Visualizes runtime exceptions, error messages, and full diagnostic stack tracebacks for failed steps.
 - ⚡ **Interactive Control Actions**: Trigger workflow runs, cancel active runs, and restart failed/cancelled runs with one click.
 - 🔑 **Project Key Management**: Generate and manage SHA-256 hashed API keys (`af_live_...`).
+- 🔔 **Multi-Channel Alerting & Webhooks (`/dashboard/settings`)**: Configure Slack, Discord, or custom HTTP webhooks with provider auto-detection, failure event toggles (`workflow.failed`, `workflow.timed_out`, `step.max_retries_exhausted`, `worker.disconnected`), sliding-window rate limiting presets, and live connection test verification.
+- ⚙️ **Project Maintenance & Data Purging**: Update project name, trigger instant deletion of finished execution runs/logs with the **Purge Completed & Failed Runs** action, and handle project deletion.
 
 ---
 

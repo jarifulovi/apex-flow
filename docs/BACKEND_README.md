@@ -128,6 +128,30 @@ To prevent database storage bloating on PostgreSQL databases:
 - **Hard Batched Delete** (`prune_old_workflow_runs_batched`): Daily at 03:00 AM UTC, deletes terminal runs older than 30 days in non-blocking batches of 2,000 rows.
 - Cloud Object Storage lifecycle retention (auto-deleting expired objects) is managed natively via S3 bucket lifecycle rules.
 
+### 9. Multi-Channel Webhook Alerting & Anti-Hammering Engine (`AlertService`)
+The control plane provides per-project alert notifications across external collaboration platforms without requiring separate tables:
+- **Zero-Config Webhook Auto-Detection**: Automatically identifies endpoint targets (**Slack**, **Discord**, or **Generic JSON**) from hostname and path:
+  - **Slack**: Renders native Slack Block Kit formatting with header blocks, field summaries, and error code blocks.
+  - **Discord**: Renders rich embeds with status color coding (`0xEF4444` for failures, `0xF59E0B` for timeouts/disconnects, `0x10B981` for test pings).
+  - **Generic Webhook**: Dispatches a standard JSON payload including project metadata, timestamps, and error snippets.
+- **Sliding-Window Anti-Hammering & Digest Coalescing (`SlidingWindowLimiter`)**:
+  - Enforces per-(project, workflow) sliding windows (configurable to `60s`, `120s`, `300s`, `600s`) and burst limits (`1` to `10` alerts per window) with a project-wide safety ceiling.
+  - Saturated alert spikes are automatically coalesced into an in-memory digest bucket and delivered as a single aggregated summary alert once the window clears.
+- **SSRF & Scheme Defense**: Webhook URLs strictly validate against loopback (`127.0.0.1`, `localhost`), private RFC 1918 subnets, link-local addresses, and cloud instance metadata endpoints (`169.254.169.254`).
+- **Covered Failure Events**:
+  - `workflow.failed`: Unhandled step or workflow error.
+  - `workflow.timed_out`: Run execution exceeded `timeout_seconds`.
+  - `step.max_retries_exhausted`: Step consumed all allowed retry attempts.
+  - `step.lock_expired`: Worker lease timed out while executing a step.
+  - `worker.disconnected`: Worker missed heartbeats for more than 60 seconds.
+
+### 10. Periodic Background Housekeeping & Self-Healing (`HousekeepingService`)
+Managed within FastAPI `lifespan`, an asynchronous background sweeper runs every 30 seconds:
+- **Worker Disconnect Detection**: Atomically transitions active workers missing heartbeats ($>60\text{s}$) to `inactive` status and schedules an edge-triggered `worker.disconnected` alert once per outage.
+- **Stale Lock Recovery**: Recovers step leases stuck in `running` when a worker process crashes, re-queuing the steps for healthy workers.
+- **Workflow Timeout Enforcement**: Enforces workflow deadlines, marking timed-out runs as `failed` and cancelling pending steps.
+- **Sparse Partial Indexing**: All sweeper queries leverage PostgreSQL partial indexes (`WHERE status = 'running'`), completing in $<1\text{ms}$ across all tenants in a single query without project-by-project loop overhead.
+
 ---
 
 ## ⚙️ Storage Configuration Settings
@@ -181,7 +205,10 @@ The backend control plane enforces a **Header-Strict Two-Layer Authentication Mo
 | `/api/v1/projects` | `POST` | Supabase JWT | Create a new project tenant. |
 | `/api/v1/projects/default` | `GET` | Supabase JWT | Get or provision default project for authenticated user. |
 | `/api/v1/projects/{project_id}` | `GET` | Supabase JWT | Retrieve project metadata by ID. |
+| `/api/v1/projects/{project_id}` | `PATCH` | Supabase JWT | Update project name and alert settings. |
 | `/api/v1/projects/{project_id}` | `DELETE` | Supabase JWT | Delete project and associated records. |
+| `/api/v1/projects/{project_id}/alerts/test` | `POST` | Supabase JWT | Send verification test alert to configured or supplied webhook. |
+| `/api/v1/projects/{project_id}/purge` | `POST` | Supabase JWT | Purge logs and finished execution runs for a project. |
 | `/api/v1/projects/{project_id}/overview` | `GET` | Supabase JWT | Consolidated project telemetry (stats, recent activities, status flags). |
 | `/api/v1/projects/{project_id}/metrics` | `GET` | Supabase JWT | Aggregated project execution metrics (success rate, workers, avg duration). |
 | `/api/v1/workflows` | `POST` | Project API Key | Create, debounced buffer, or deduplicate a workflow run execution state. |

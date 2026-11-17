@@ -134,6 +134,7 @@ In the dashboard console, workflows and their step executions are structured in 
 | **Parent Restarted** | Parent resets to `RUNNING` & steps reset to `QUEUED`. | Automatically cascades `PENDING` reset to failed or cancelled child sub-workflows. |
 | **Child Fails** | Child transitions to `FAILED`. | Isolated to child workflow. Parent can catch error or retry child sub-workflow. |
 | **Child Restarted** | Child resets to `RUNNING` & steps reset to `QUEUED`. | Child execution resumes independently without re-executing completed parent steps. |
+| **Worker Disconnect** | Running steps recovered to `QUEUED`. | Stale step locks reset; edge-triggered `worker.disconnected` alert dispatched once per outage. |
 
 ---
 
@@ -150,3 +151,6 @@ In the dashboard console, workflows and their step executions are structured in 
 | **Complete Workflow** | `POST /api/v1/workflows/{id}/complete` | Transition run to `COMPLETED`. |
 | **Cancel Run** | `POST /api/v1/workflows/{id}/cancel` | Cancel active run, pending steps, and child workflows. |
 | **Restart Run** | `POST /api/v1/workflows/{id}/restart` | Reset failed steps to `QUEUED` and cascade reset child workflows. |
+| **Update Project Settings** | `PATCH /api/v1/projects/{id}` | Update project name and alert notification policies. |
+| **Test Alert Webhook** | `POST /api/v1/projects/{id}/alerts/test` | Dispatch test verification event to Slack, Discord, or generic HTTP webhook. |
+| **Purge Project Runs** | `POST /api/v1/projects/{id}/purge` | Delete finished workflow runs and step logs for a project. |
