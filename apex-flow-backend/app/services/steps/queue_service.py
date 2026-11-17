@@ -16,7 +16,9 @@ from app.services.workers.worker_service import WorkerService
 
 class QueueService:
     @staticmethod
-    async def recover_stale_locks(db: AsyncSession, project_id: uuid.UUID) -> int:
+    async def recover_stale_locks(
+        db: AsyncSession, project_id: Optional[uuid.UUID] = None
+    ) -> int:
         """
         Auto-re-queues steps stuck in 'running' state past their locked_until timestamp.
         If max_attempts exceeded, marks step and workflow run as 'failed'.
@@ -27,12 +29,13 @@ class QueueService:
             select(WorkflowStep)
             .join(WorkflowRun, WorkflowStep.workflow_run_id == WorkflowRun.id)
             .where(
-                WorkflowRun.project_id == project_id,
                 WorkflowStep.status == "running",
                 WorkflowStep.locked_until.is_not(None),
                 WorkflowStep.locked_until < now,
             )
         )
+        if project_id is not None:
+            stale_query = stale_query.where(WorkflowRun.project_id == project_id)
         if db.bind and db.bind.dialect.name == "postgresql":
             stale_query = stale_query.with_for_update(of=WorkflowStep, skip_locked=True)
 

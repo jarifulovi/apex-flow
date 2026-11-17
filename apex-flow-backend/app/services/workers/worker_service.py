@@ -1,11 +1,12 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.worker import Worker
 from app.schemas.worker import WorkerHeartbeatRequest
+from app.services.alerts import AlertService
 
 
 class WorkerService:
@@ -74,3 +75,50 @@ class WorkerService:
 
         result = await db.execute(query)
         return list(result.scalars().all())
+
+    @staticmethod
+    async def recover_disconnected_workers(
+        db: AsyncSession,
+        project_id: Optional[uuid.UUID] = None,
+        stale_threshold_seconds: int = 60,
+    ) -> int:
+        """
+        Atomically transition active workers past heartbeat threshold to 'inactive'
+        and schedule edge-triggered worker disconnect alerts once per outage.
+        """
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=stale_threshold_seconds)
+
+        stmt = select(Worker).where(
+            Worker.status == "active",
+            Worker.last_seen_at.is_not(None),
+            Worker.last_seen_at < cutoff,
+        )
+        if project_id is not None:
+            stmt = stmt.where(Worker.project_id == project_id)
+
+        if db.bind and db.bind.dialect.name == "postgresql":
+            stmt = stmt.with_for_update(skip_locked=True)
+
+        result = await db.execute(stmt)
+        stale_workers = list(result.scalars().all())
+
+        for worker in stale_workers:
+            worker.status = "inactive"
+
+        if stale_workers:
+            await db.commit()
+            for worker in stale_workers:
+                AlertService.schedule_alert(
+                    db=db,
+                    project_id=worker.project_id,
+                    event_type="worker.disconnected",
+                    workflow_run_id=None,
+                    workflow_name=worker.name,
+                    error_message=(
+                        f"Worker '{worker.name}' (ID: {worker.id}) missed heartbeat "
+                        f"for more than {stale_threshold_seconds}s."
+                    ),
+                )
+
+        return len(stale_workers)

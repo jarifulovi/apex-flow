@@ -16,6 +16,8 @@ interface AlertsWebhooksSectionProps {
   setAlertOnTimeout: (val: boolean) => void;
   alertOnMaxRetry: boolean;
   setAlertOnMaxRetry: (val: boolean) => void;
+  alertOnWorkerDisconnect: boolean;
+  setAlertOnWorkerDisconnect: (val: boolean) => void;
   windowSeconds: AlertWindowSeconds;
   setWindowSeconds: (val: AlertWindowSeconds) => void;
   maxAlertsPerWindow: MaxAlertsPerWindow;
@@ -32,6 +34,8 @@ export function AlertsWebhooksSection({
   setAlertOnTimeout,
   alertOnMaxRetry,
   setAlertOnMaxRetry,
+  alertOnWorkerDisconnect,
+  setAlertOnWorkerDisconnect,
   windowSeconds,
   setWindowSeconds,
   maxAlertsPerWindow,
@@ -197,18 +201,14 @@ export function AlertsWebhooksSection({
               <span>Step reaches maximum retry limit without succeeding</span>
             </label>
 
-            <label className="flex items-center gap-3 text-xs text-zinc-500 cursor-not-allowed">
+            <label className="flex items-center gap-3 text-xs text-zinc-300 cursor-pointer">
               <input
                 type="checkbox"
-                checked={false}
-                disabled={true}
-                onChange={() => {}}
-                className="rounded bg-[#1b1b26] border-white/10 text-zinc-600 opacity-50 cursor-not-allowed"
+                checked={alertOnWorkerDisconnect}
+                onChange={(e) => setAlertOnWorkerDisconnect(e.target.checked)}
+                className="rounded bg-[#1b1b26] border-white/20 text-violet-600 focus:ring-violet-500"
               />
               <span>Active worker missed heartbeat for more than 60 seconds</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-zinc-400">
-                Deferred / Coming Soon
-              </span>
             </label>
           </div>
         </div>

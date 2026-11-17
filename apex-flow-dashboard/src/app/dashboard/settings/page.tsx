@@ -57,6 +57,9 @@ export default function SettingsPage() {
   const [alertOnFailure, setAlertOnFailure] = useState(MOCK_SETTINGS.alerts.alertOnFailure);
   const [alertOnTimeout, setAlertOnTimeout] = useState(MOCK_SETTINGS.alerts.alertOnTimeout);
   const [alertOnMaxRetry, setAlertOnMaxRetry] = useState(MOCK_SETTINGS.alerts.alertOnMaxRetry);
+  const [alertOnWorkerDisconnect, setAlertOnWorkerDisconnect] = useState(
+    MOCK_SETTINGS.alerts.alertOnWorkerDisconnect
+  );
   const [windowSeconds, setWindowSeconds] = useState<AlertWindowSeconds>(
     MOCK_SETTINGS.alerts.windowSeconds
   );
@@ -97,6 +100,11 @@ export default function SettingsPage() {
         ? alertsMeta.alert_on_max_retry
         : MOCK_SETTINGS.alerts.alertOnMaxRetry
     );
+    setAlertOnWorkerDisconnect(
+      typeof alertsMeta.alert_on_worker_disconnect === "boolean"
+        ? alertsMeta.alert_on_worker_disconnect
+        : MOCK_SETTINGS.alerts.alertOnWorkerDisconnect
+    );
     setWindowSeconds(
       pickPreset(alertsMeta.window_seconds, ALLOWED_WINDOW_SECONDS, MOCK_SETTINGS.alerts.windowSeconds)
     );
@@ -127,6 +135,7 @@ export default function SettingsPage() {
           alert_on_failure: alertOnFailure,
           alert_on_timeout: alertOnTimeout,
           alert_on_max_retry: alertOnMaxRetry,
+          alert_on_worker_disconnect: alertOnWorkerDisconnect,
           window_seconds: windowSeconds,
           max_alerts_per_window: maxAlertsPerWindow,
         },
@@ -264,6 +273,8 @@ export default function SettingsPage() {
             setAlertOnTimeout={setAlertOnTimeout}
             alertOnMaxRetry={alertOnMaxRetry}
             setAlertOnMaxRetry={setAlertOnMaxRetry}
+            alertOnWorkerDisconnect={alertOnWorkerDisconnect}
+            setAlertOnWorkerDisconnect={setAlertOnWorkerDisconnect}
             windowSeconds={windowSeconds}
             setWindowSeconds={setWindowSeconds}
             maxAlertsPerWindow={maxAlertsPerWindow}

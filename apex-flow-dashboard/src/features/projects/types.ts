@@ -8,6 +8,7 @@ export interface ProjectAlertMetadata {
   alert_on_failure?: boolean;
   alert_on_timeout?: boolean;
   alert_on_max_retry?: boolean;
+  alert_on_worker_disconnect?: boolean;
   window_seconds?: AlertWindowSeconds;
   max_alerts_per_window?: MaxAlertsPerWindow;
 }
@@ -39,6 +40,7 @@ export interface ProjectUpdatePayload {
     alert_on_failure: boolean;
     alert_on_timeout: boolean;
     alert_on_max_retry: boolean;
+    alert_on_worker_disconnect: boolean;
     window_seconds: AlertWindowSeconds;
     max_alerts_per_window: MaxAlertsPerWindow;
   };

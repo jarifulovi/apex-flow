@@ -1,4 +1,6 @@
+import asyncio
 from contextlib import asynccontextmanager
+import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,16 +9,24 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import register_exception_handlers
+from app.services.housekeeping import HousekeepingService
+
+logger = logging.getLogger(__name__)
+
+# Re-export sweep runner for direct script/testing access
+run_housekeeping_sweep = HousekeepingService.run_sweep
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: validate storage adapter configuration
+    # Startup: validate storage adapter configuration and start background sweeper
     get_storage_adapter()
+    sweeper_task = HousekeepingService.start()
     try:
         yield
     finally:
-        # Shutdown: cleanly dispose database connection pool
+        # Shutdown: stop background sweeper and cleanly dispose database connection pool
+        await HousekeepingService.stop(sweeper_task)
         await engine.dispose()
 
 

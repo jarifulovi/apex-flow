@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
@@ -7,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.project import Project
+from app.models.worker import Worker
 from app.schemas.project import (
     ProjectAlertSettings,
     ProjectUpdate,
@@ -19,6 +21,7 @@ from app.services.alerts.alert_service import (
     detect_webhook_provider,
 )
 from app.services.projects.project_service import ProjectService
+from app.services.workers.worker_service import WorkerService
 
 
 def test_alert_settings_schema_accepts_valid_presets_and_urls():
@@ -412,4 +415,116 @@ async def test_project_service_purge_project_logs_deletes_finished_runs():
     assert deleted_count == 14
     assert db.execute.call_count == 2
     db.commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_recover_disconnected_workers_transitions_active_to_inactive_once():
+    project_id = uuid.uuid4()
+    worker_id = uuid.uuid4()
+    stale_worker = Worker(
+        id=worker_id,
+        project_id=project_id,
+        name="gpu-worker-1",
+        status="active",
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=120),
+    )
+
+    db = AsyncMock()
+    db.bind = MagicMock()
+    db.bind.dialect.name = "postgresql"
+
+    first_res = MagicMock()
+    first_res.scalars.return_value.all.return_value = [stale_worker]
+    second_res = MagicMock()
+    second_res.scalars.return_value.all.return_value = []
+    db.execute.side_effect = [first_res, second_res]
+
+    with patch(
+        "app.services.workers.worker_service.AlertService.schedule_alert"
+    ) as mock_schedule:
+        recovered_first = await WorkerService.recover_disconnected_workers(
+            db=db,
+            project_id=project_id,
+            stale_threshold_seconds=60,
+        )
+        assert recovered_first == 1
+        assert stale_worker.status == "inactive"
+        db.commit.assert_called_once()
+        mock_schedule.assert_called_once()
+        call_kwargs = mock_schedule.call_args.kwargs
+        assert call_kwargs["project_id"] == project_id
+        assert call_kwargs["event_type"] == "worker.disconnected"
+        assert call_kwargs["workflow_run_id"] is None
+        assert call_kwargs["workflow_name"] == "gpu-worker-1"
+        assert "gpu-worker-1" in call_kwargs["error_message"]
+
+        # Subsequent sweep sees no active stale workers, preventing duplicate alerts
+        recovered_second = await WorkerService.recover_disconnected_workers(
+            db=db,
+            project_id=project_id,
+            stale_threshold_seconds=60,
+        )
+        assert recovered_second == 0
+        assert db.commit.call_count == 1
+        assert mock_schedule.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_alert_service_emits_worker_disconnected_when_enabled():
+    AlertService.get_limiter().reset()
+    project = Project(
+        id=uuid.uuid4(),
+        owner_id=uuid.uuid4(),
+        name="Worker Fleet",
+        metadata_={
+            "alerts": {
+                "webhook_url": "https://hooks.slack.com/services/T000/B000/XXXX",
+                "alert_on_failure": False,
+                "alert_on_timeout": False,
+                "alert_on_max_retry": False,
+                "alert_on_worker_disconnect": False,
+                "window_seconds": 300,
+                "max_alerts_per_window": 3,
+            }
+        },
+    )
+
+    recorded_posts: List[Dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded_posts.append({"url": str(request.url), "content": request.read().decode("utf-8")})
+        return httpx.Response(200, text="ok")
+
+    transport = httpx.MockTransport(handler)
+    original_async_client = httpx.AsyncClient
+
+    def client_factory(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
+        kwargs["transport"] = transport
+        return original_async_client(*args, **kwargs)
+
+    with patch("app.services.alerts.alert_service.httpx.AsyncClient", side_effect=client_factory):
+        skipped = await AlertService.emit_alert(
+            project=project,
+            event_type="worker.disconnected",
+            workflow_run_id=None,
+            workflow_name="worker-alpha",
+            error_message="Worker missed heartbeat for more than 60s.",
+        )
+        assert skipped is False
+        assert len(recorded_posts) == 0
+
+        project.metadata_["alerts"]["alert_on_worker_disconnect"] = True
+        emitted = await AlertService.emit_alert(
+            project=project,
+            event_type="worker.disconnected",
+            workflow_run_id=None,
+            workflow_name="worker-alpha",
+            error_message="Worker missed heartbeat for more than 60s.",
+        )
+        assert emitted is True
+        assert len(recorded_posts) == 1
+        assert "Worker Heartbeat Disconnected" in recorded_posts[0]["content"]
+        assert "worker-alpha" in recorded_posts[0]["content"]
+
+    AlertService.get_limiter().reset()
 

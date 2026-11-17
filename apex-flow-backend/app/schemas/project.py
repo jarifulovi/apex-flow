@@ -55,6 +55,7 @@ class ProjectAlertSettings(BaseModel):
     alert_on_failure: bool = True
     alert_on_timeout: bool = True
     alert_on_max_retry: bool = True
+    alert_on_worker_disconnect: bool = False
     window_seconds: AlertWindowSeconds = 300
     max_alerts_per_window: MaxAlertsPerWindow = 3
 

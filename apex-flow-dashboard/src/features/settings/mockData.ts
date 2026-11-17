@@ -15,6 +15,7 @@ export const MOCK_SETTINGS: {
     alertOnFailure: true,
     alertOnTimeout: true,
     alertOnMaxRetry: true,
+    alertOnWorkerDisconnect: false,
     windowSeconds: 300,
     maxAlertsPerWindow: 3,
   },

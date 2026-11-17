@@ -10,6 +10,7 @@ export interface WebhookAlertSettings {
   alertOnFailure: boolean;
   alertOnTimeout: boolean;
   alertOnMaxRetry: boolean;
+  alertOnWorkerDisconnect: boolean;
   windowSeconds: AlertWindowSeconds;
   maxAlertsPerWindow: MaxAlertsPerWindow;
 }
