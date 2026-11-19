@@ -17,6 +17,9 @@ async def test_housekeeping_run_sweep_calls_all_recovery_methods():
         "app.services.housekeeping.housekeeping_service.QueueService.recover_timed_out_workflows",
         new_callable=AsyncMock,
     ) as mock_workflows_recover, patch(
+        "app.services.housekeeping.housekeeping_service.ScheduleService.dispatch_due_schedules",
+        new_callable=AsyncMock,
+    ) as mock_dispatch_schedules, patch(
         "app.services.housekeeping.housekeeping_service.AsyncSessionLocal"
     ) as mock_session_local:
         mock_session = AsyncMock()
@@ -27,6 +30,7 @@ async def test_housekeeping_run_sweep_calls_all_recovery_methods():
         mock_worker_recover.assert_awaited_once_with(db=mock_session)
         mock_locks_recover.assert_awaited_once_with(db=mock_session)
         mock_workflows_recover.assert_awaited_once_with(db=mock_session)
+        mock_dispatch_schedules.assert_awaited_once_with(db=mock_session)
 
 
 @pytest.mark.asyncio

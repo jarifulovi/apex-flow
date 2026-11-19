@@ -28,12 +28,14 @@ print_usage() {
     echo "  large       | payload     : Large Payload Offloading Demo (large_payload_example.py)"
     echo "  enc         | encrypt     : Zero-Knowledge Payload Encryption Demo (encrypted_payload_example.py)"
     echo "  heartbeat   | hb          : Worker Heartbeat Monitoring Demo (worker_heartbeat_example.py)"
+    echo "  cron        | schedule    : Cron & Scheduled Workflow Worker Demo (cron_schedule_example.py)"
     echo ""
     echo "Examples:"
     echo "  ./run.sh ecom"
     echo "  ./run.sh large"
     echo "  ./run.sh enc"
     echo "  ./run.sh heartbeat"
+    echo "  ./run.sh cron"
     echo "================================================="
 }
 
@@ -64,6 +66,10 @@ case "$OPTION" in
     heartbeat|hb)
         echo "Running Worker Heartbeat Monitoring Example..."
         "$PYTHON_BIN" "$SCRIPT_DIR/worker_heartbeat_example.py" "$@"
+        ;;
+    cron|schedule|schedules)
+        echo "Running Cron & Scheduled Workflow Example..."
+        "$PYTHON_BIN" "$SCRIPT_DIR/cron_schedule_example.py" "$@"
         ;;
     -h|--help|help)
         print_usage

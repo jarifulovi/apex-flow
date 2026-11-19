@@ -3,6 +3,8 @@
 -- ==========================================
 
 -- Drop existing indexes if they exist
+DROP INDEX IF EXISTS idx_workflow_schedules_project;
+DROP INDEX IF EXISTS idx_workflow_schedules_due;
 DROP INDEX IF EXISTS idx_workflow_steps_order;
 DROP INDEX IF EXISTS idx_workflow_steps_run;
 DROP INDEX IF EXISTS idx_workflow_steps_locked;
@@ -21,6 +23,7 @@ DROP INDEX IF EXISTS idx_project_keys_hash;
 DROP INDEX IF EXISTS idx_projects_owner;
 
 -- Drop existing tables in reverse dependency order
+DROP TABLE IF EXISTS workflow_schedules CASCADE;
 DROP TABLE IF EXISTS workflow_steps CASCADE;
 DROP TABLE IF EXISTS workflow_runs CASCADE;
 DROP TABLE IF EXISTS workflows CASCADE;
@@ -131,3 +134,21 @@ CREATE INDEX idx_workflow_steps_locked ON workflow_steps (locked_until) WHERE st
 
 -- Step lookup and sequence ordering index (covers both run lookups and step_order sorting with zero sorting overhead)
 CREATE INDEX idx_workflow_steps_order ON workflow_steps (workflow_run_id, step_order);
+
+-- 6. Create the workflow_schedules table (Cron & Scheduled Workflows Registry)
+CREATE TABLE workflow_schedules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    workflow_name TEXT NOT NULL,
+    cron_expression TEXT NOT NULL,
+    timezone TEXT NOT NULL DEFAULT 'UTC',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    next_run_at TIMESTAMPTZ NULL,
+    last_run_at TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_workflow_schedules_project_workflow UNIQUE (project_id, workflow_name)
+);
+
+CREATE INDEX idx_workflow_schedules_due ON workflow_schedules (next_run_at) WHERE is_active = true AND next_run_at IS NOT NULL;
+CREATE INDEX idx_workflow_schedules_project ON workflow_schedules (project_id, created_at DESC);

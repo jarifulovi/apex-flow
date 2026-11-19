@@ -9,6 +9,7 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.project_key import ProjectKey
+    from app.models.schedule import WorkflowSchedule
     from app.models.worker import Worker
     from app.models.workflow_run import WorkflowRun
 
@@ -62,6 +63,11 @@ class Project(Base):
     )
     workers: Mapped[List["Worker"]] = relationship(
         "Worker",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    workflow_schedules: Mapped[List["WorkflowSchedule"]] = relationship(
+        "WorkflowSchedule",
         back_populates="project",
         cascade="all, delete-orphan",
     )

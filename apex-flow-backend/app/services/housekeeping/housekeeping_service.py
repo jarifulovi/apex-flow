@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 
 from app.core.database import AsyncSessionLocal
+from app.services.schedules import ScheduleService
 from app.services.steps import QueueService
 from app.services.workers import WorkerService
 
@@ -11,15 +12,16 @@ logger = logging.getLogger(__name__)
 
 
 class HousekeepingService:
-    """Coordinates periodic background sweeps for worker disconnects, lock expiration, and timeouts."""
+    """Coordinates periodic background sweeps for worker disconnects, lock expiration, timeouts, and cron schedules."""
 
     @staticmethod
     async def run_sweep() -> None:
-        """Reconcile disconnected workers, expired step locks, and timed-out workflow runs."""
+        """Reconcile disconnected workers, expired step locks, timed-out workflows, and due schedules."""
         async with AsyncSessionLocal() as session:
             await WorkerService.recover_disconnected_workers(db=session)
             await QueueService.recover_stale_locks(db=session)
             await QueueService.recover_timed_out_workflows(db=session)
+            await ScheduleService.dispatch_due_schedules(db=session)
 
     @classmethod
     async def run_loop(cls, interval_seconds: float = 30.0) -> None:

@@ -111,3 +111,21 @@ Demonstrates live worker heartbeat registration and continuous liveness monitori
 # Or shorthand:
 ./run.sh hb
 ```
+
+---
+
+## ⏰ Walkthrough 6: Cron & Scheduled Workflows Demo
+
+File: [`cron_schedule_example.py`](file:///home/ovi/Desktop/Project/Web/apex-flow/sdks/python/examples/cron_schedule_example.py)
+
+Demonstrates declaring a recurring cron schedule directly on `@client.workflow(..., cron="*/2 * * * *")` with automatic control-plane sync on worker startup.
+
+- **Control Plane**: Registers/updates the schedule via `POST /api/v1/schedules/sync` and dispatches runs automatically when `next_run_at <= now()`.
+- **Dashboard UI**: Open **Workflows → Schedules** (`/dashboard/workflows?tab=schedules`) to view the humanized cron expression, next-run countdown, toggle Pause/Resume, or trigger **Run Now** on demand.
+
+### Run:
+```bash
+./run.sh cron
+# Custom cron expression & timezone:
+./run.sh cron --cron "*/5 * * * *" --timezone "UTC"
+```

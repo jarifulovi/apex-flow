@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import inspect
+import logging
 import os
 import random
 import signal
@@ -11,6 +12,8 @@ import httpx
 
 from apex_flow_sdk.adapters.storage import StorageResolver
 from apex_flow_sdk.core.context import WorkflowContext
+
+logger = logging.getLogger(__name__)
 
 
 class ApexFlowClient:
@@ -43,6 +46,7 @@ class ApexFlowClient:
         self.poll_interval_seconds = poll_interval_seconds
         self.poll_timeout_seconds = poll_timeout_seconds
         self._workflows: Dict[str, Callable] = {}
+        self._workflow_schedules: Dict[str, Dict[str, str]] = {}
         self._step_handlers: Dict[str, Callable] = {}
 
         headers = {}
@@ -86,16 +90,40 @@ class ApexFlowClient:
                 jitter = random.uniform(0.75, 1.25)
                 await asyncio.sleep(delay * jitter)
 
-    def workflow(self, name: str):
-        """Decorator to register a workflow definition under a unique name."""
+    def workflow(self, name: str, cron: Optional[str] = None, timezone: str = "UTC"):
+        """Decorator to register a workflow definition under a unique name and optional cron schedule."""
         if name in self._workflows:
             raise ValueError(f"Workflow '{name}' is already registered on this client instance.")
 
+        if cron is not None:
+            cleaned_cron = " ".join(cron.strip().split())
+            if len(cleaned_cron.split(" ")) != 5:
+                raise ValueError(f"Invalid 5-field cron expression '{cron}' for workflow '{name}'.")
+            cleaned_tz = (timezone or "UTC").strip() or "UTC"
+            self._workflow_schedules[name] = {
+                "workflow_name": name,
+                "cron_expression": cleaned_cron,
+                "timezone": cleaned_tz,
+            }
+
         def decorator(func: Callable):
+            sig = inspect.signature(func)
+            params = list(sig.parameters.values())
+            accepts_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+            positional_count = sum(
+                1
+                for p in params
+                if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            )
+            accepts_payload = accepts_varargs or positional_count >= 2
+
             @functools.wraps(func)
             async def wrapper(ctx: WorkflowContext, *args, **kwargs):
                 try:
-                    result = await func(ctx, *args, **kwargs)
+                    if accepts_payload:
+                        result = await func(ctx, *args, **kwargs)
+                    else:
+                        result = await func(ctx)
                     await self.complete_workflow(ctx.workflow_run_id)
                     return result
                 except Exception as e:
@@ -226,6 +254,18 @@ class ApexFlowClient:
         except Exception:
             pass
 
+    async def sync_schedules(self) -> List[Dict[str, Any]]:
+        """Register or update cron workflow schedules declared on this client."""
+        if not self._workflow_schedules:
+            return []
+        res = await self._request_with_retry(
+            "POST",
+            f"{self.base_url}/api/v1/schedules/sync",
+            json={"schedules": list(self._workflow_schedules.values())},
+        )
+        res.raise_for_status()
+        return res.json()
+
     async def start_worker(
         self,
         step_names: Optional[List[str]] = None,
@@ -241,6 +281,11 @@ class ApexFlowClient:
         hold_timeout = 0.0 if run_once else (poll_timeout if poll_timeout is not None else self.poll_timeout_seconds)
         print(f"🚀 ApexFlow Worker '{self.worker_name}' started. Polling control plane at '{self.base_url}'...")
         await self.send_heartbeat()
+        if self._workflow_schedules:
+            try:
+                await self.sync_schedules()
+            except Exception as sync_err:
+                logger.warning("Failed to sync declared workflow schedules on startup: %s", sync_err)
 
         stop_event = asyncio.Event()
 
@@ -324,10 +369,51 @@ class ApexFlowClient:
                                     "attempt_count": step_data.get("attempt_count", 1),
                                 }
                                 await self._request_with_retry("POST", f"{self.base_url}/api/v1/steps/report", json=report_payload)
-                        elif self._workflows:
-                            ctx = WorkflowContext(workflow_run_id=workflow_run_id, client=self, store_payloads=self.store_payloads)
-                            for wf_name, wf_func in self._workflows.items():
-                                await wf_func(ctx, input_payload)
+                        elif step_name in self._workflows or self._workflows:
+                            target_workflows = (
+                                [(step_name, self._workflows[step_name])]
+                                if step_name in self._workflows
+                                else list(self._workflows.items())
+                            )
+                            ctx = WorkflowContext(
+                                workflow_run_id=workflow_run_id,
+                                client=self,
+                                store_payloads=self.store_payloads,
+                            )
+                            try:
+                                for _, wf_func in target_workflows:
+                                    await wf_func(ctx, input_payload)
+                                report_payload = {
+                                    "step_id": step_id,
+                                    "status": "success",
+                                    "output_payload": {
+                                        "workflow": step_name,
+                                        "status": "dispatched",
+                                    },
+                                    "attempt_count": step_data.get("attempt_count", 1),
+                                }
+                                await self._request_with_retry(
+                                    "POST",
+                                    f"{self.base_url}/api/v1/steps/report",
+                                    json=report_payload,
+                                )
+                            except Exception as wf_err:
+                                logger.error(
+                                    "Scheduled workflow '%s' failed execution: %s",
+                                    step_name,
+                                    wf_err,
+                                )
+                                report_payload = {
+                                    "step_id": step_id,
+                                    "status": "failed",
+                                    "error_message": str(wf_err),
+                                    "attempt_count": step_data.get("attempt_count", 1),
+                                }
+                                await self._request_with_retry(
+                                    "POST",
+                                    f"{self.base_url}/api/v1/steps/report",
+                                    json=report_payload,
+                                )
 
                     elif res.status_code == 204:
                         sleep_after_poll = hold_timeout <= 0

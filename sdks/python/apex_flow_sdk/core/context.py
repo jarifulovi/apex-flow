@@ -41,6 +41,8 @@ class WorkflowContext:
                 for step_info in run_detail.get("steps", []):
                     step_name = step_info.get("step_name")
                     step_order = step_info.get("step_order")
+                    if step_order == 0:
+                        continue
                     status = step_info.get("status")
                     step_id = step_info.get("id")
 
