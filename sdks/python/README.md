@@ -15,6 +15,7 @@ pip install apex-flow-sdk
 ## ✨ Key Capabilities
 
 - 🔄 **Durable Checkpointing**: Steps are memoized on completion; workflow execution resumes at the exact failed step without re-executing completed steps.
+- ⏰ **Declarative Cron & Scheduled Workflows**: Register recurring workflows directly in code via `@client.workflow(name="...", cron="*/5 * * * *", timezone="UTC")` with automatic startup synchronization to the control plane.
 - 🔐 **Zero-Knowledge Payload Encryption (E2EE)**: Optional end-to-end authenticated AES-256-GCM client encryption (`encryption_key="secret"` or `APEXFLOW_ENCRYPTION_KEY`). PostgreSQL, Cloudflare R2, and control plane store only ciphertext. The Web dashboard decrypts payloads client-side in the browser via the Web Crypto API.
 - ⚡ **Transparent Large Payload Offloading (`StorageResolver`)**: Payloads $> 250\text{ KB}$ are automatically offloaded to object storage (S3/MinIO) or local storage fallback via `StorageResolver`. The SDK transparently dereferences `$apexflow_ref` pointers back into native dictionaries or bytes.
 - 🛡️ **Resilient Retries & Error Classification**: Configurable exponential backoff retries with immediate abort support for `NonRetryableError`.
@@ -66,6 +67,8 @@ cd examples
 ./run.sh sub         # Parent & child sub-workflow lineage demo
 ./run.sh large       # Large payload offloading demo (>250KB threshold)
 ./run.sh enc         # Zero-Knowledge client-side encryption demo (AES-256-GCM)
+./run.sh hb          # Worker heartbeat & liveness monitoring demo
+./run.sh cron        # Cron & scheduled workflow registration/dispatch demo
 ```
 
 ---

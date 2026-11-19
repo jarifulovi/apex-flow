@@ -62,6 +62,7 @@ A **Workflow Run** represents a single execution instance of a named workflow.
 3. **Workflow-Level Deadlines (`timeout_seconds`)**: Workflows can declare execution deadlines (`deadline_at = started_at + timeout_seconds`). Background sweeps automatically fail runs that exceed their deadline and cancel incomplete steps.
 4. **Time-Travel Forking (`POST /api/v1/workflows/{id}/fork` with `{"from_step_order": N}`)**: Clones workflow execution state up to step $N-1$ with outputs memoized, marking step $N$ as queued for fresh execution. Lineage is tracked via `forked_from_id`.
 5. **Interactive Restart**: Failed or cancelled runs can be restarted via `POST /api/v1/workflows/{id}/restart`. Restarting resets failed/cancelled steps to `QUEUED` while preserving previously completed step checkpoints.
+6. **Recurring Cron & Scheduled Triggers (`WorkflowSchedule`)**: Schedules are uniquely scoped by `(project_id, workflow_name)`. When `next_run_at <= now()`, the background dispatcher creates a `WorkflowRun` (`trigger_source: "schedule"`) alongside an entrypoint dispatch step (`step_order: 0`). Pausing clears `next_run_at` to `NULL`, and resuming computes the next future run from `now()` with no backfill (`catchup=False`). Manual **"Run Now"** triggers execute immediately (`trigger_source: "schedule_manual"`) without shifting `next_run_at`.
 
 ---
 
@@ -84,7 +85,7 @@ A **Workflow Step** represents an atomic unit of execution within a workflow run
 
 ### Step Execution Guarantees:
 - **Loop-Safe Step Identity (`(step_name, step_order)`)**: Step memoization is keyed on both name and sequence order. Executing the same step function repeatedly in loops creates distinct checkpoints.
-- **Sequence Tracking (`step_order`)**: Each step is assigned a 1-based integer sequence (`step_order = 1, 2, 3...`), guaranteeing deterministic chronological ordering in database timeline queries.
+- **Sequence Tracking (`step_order`)**: User steps within a workflow run are assigned a 1-based sequence integer (`step_order = 1, 2, 3...`), guaranteeing deterministic chronological ordering in database timeline queries, while `step_order = 0` is reserved for control-plane entrypoint dispatch steps on scheduled runs.
 - **Priority Queuing (`priority`)**: Steps accept an integer priority (`0` = highest priority). Queue polling de-queues higher priority steps first (`ORDER BY priority ASC, available_at ASC, created_at ASC`).
 - **Scheduled Delays (`delay_seconds`, `available_at`)**: Steps with initial delays are hidden from worker polling until `available_at <= now()`.
 - **Server-Side Exponential Backoff Retries**: Failed steps with remaining attempts are rescheduled with server-calculated exponential backoff ($2^{\text{attempt}-1}\text{s}$ or explicit `retry_delay_seconds`), surviving worker process termination.
@@ -117,7 +118,10 @@ ApexFlow supports launching **sub-workflows** from within parent workflow contex
 
 ### Observability Navigation & Workflow Routing Model
 In the dashboard console, workflows and their step executions are structured in a nested hierarchy:
-1. **Workflow Definitions Catalog** (`/dashboard/workflows`): Aggregated overview of all unique registered workflow pipelines with total runs, completion success rates, active vs. failed run counts, and average durations.
+1. **Workflows Hub** (`/dashboard/workflows`): Organized into three top-level tabs (`?tab=definitions|runs|schedules`):
+   - **Workflow Definitions Catalog** (`/dashboard/workflows?tab=definitions`): Aggregated overview of all unique registered workflow pipelines with total runs, completion success rates, active vs. failed run counts, and average durations.
+   - **All Execution Runs** (`/dashboard/workflows?tab=runs`): Paginated and status-filterable table across all workflow runs in the project.
+   - **Workflow Schedules** (`/dashboard/workflows?tab=schedules`): Manage recurring cron schedules with human-readable cron translations, live next-run countdowns, IANA timezone badges, Pause/Resume toggles, **Run Now** manual execution with a deep-link banner to the spawned run, and Create/Edit/Delete modals.
 2. **Workflow Definition Runs** (`/dashboard/workflows/{workflow_name}`): Filtered table of execution runs belonging to a specific workflow definition.
 3. **Workflow Run Execution & Steps Timeline** (`/dashboard/workflows/{workflow_name}/{workflow_run_id}`): Comprehensive execution inspection for an individual run, featuring:
    - Real-time run status badges and execution metrics.
@@ -154,3 +158,8 @@ In the dashboard console, workflows and their step executions are structured in 
 | **Update Project Settings** | `PATCH /api/v1/projects/{id}` | Update project name and alert notification policies. |
 | **Test Alert Webhook** | `POST /api/v1/projects/{id}/alerts/test` | Dispatch test verification event to Slack, Discord, or generic HTTP webhook. |
 | **Purge Project Runs** | `POST /api/v1/projects/{id}/purge` | Delete finished workflow runs and step logs for a project. |
+| **Sync Worker Schedules** | `POST /api/v1/schedules/sync` | Idempotently register or update cron schedules declared by starting workers. |
+| **List / Create Schedules** | `GET / POST /api/v1/projects/{id}/schedules` | List project cron schedules or create a new recurring schedule. |
+| **Update / Delete Schedule** | `PATCH / DELETE /api/v1/projects/{id}/schedules/{schedule_id}` | Update cron, timezone, workflow name, or active state; delete a schedule. |
+| **Pause / Resume Schedule** | `POST /api/v1/projects/{id}/schedules/{schedule_id}/pause` & `/resume` | Pause a schedule (clearing `next_run_at`) or resume from `now()`. |
+| **Trigger Schedule Now** | `POST /api/v1/projects/{id}/schedules/{schedule_id}/run` | Dispatch an immediate workflow run without shifting `next_run_at`. |

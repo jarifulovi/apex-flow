@@ -38,6 +38,7 @@ Write clean, idiomatic Python code with native functions and Pydantic models. Co
 - 🔒 **Zero-Knowledge Payload Encryption (E2EE)**: Sensitive payloads are encrypted on the worker using authenticated AES-256-GCM before transmission. The control plane and storage hold only ciphertext, decrypted client-side in the dashboard via Web Crypto API.
 - ⚡ **PostgreSQL-Powered Queue Engine**: High-throughput distributed dequeuing using `FOR UPDATE SKIP LOCKED`—no Redis, Kafka, or SQS required.
 - ⏱️ **Advanced Flow Control & Scheduling**:
+  - **Recurring Cron Schedules**: Code-first `@client.workflow(cron="*/5 * * * *", timezone="UTC")` declarations and dashboard-managed schedules with zero-compute background dispatching and one-click **Run Now** triggers.
   - **Scheduled Delays**: Step-level `delay_seconds` and server-scheduled exponential backoff retries.
   - **Workflow Deadlines**: Run-level `timeout_seconds` automatically fail stalled pipelines.
   - **Priority Queuing**: Integer `priority` parameters prevent starvation from high-volume batch workloads.
@@ -123,11 +124,11 @@ graph TD
 
 ```text
 apex-flow/
-├── apex-flow-backend/       # FastAPI Control Plane REST API, Queue Engine & Adapters
-├── apex-flow-dashboard/     # Next.js 14 Observability Dashboard & Web Crypto E2EE Inspector
+├── apex-flow-backend/       # FastAPI Control Plane REST API, Queue Engine, Migrations & Adapters
+│   └── migrations/          # PostgreSQL schema migrations & pg-cron retention routines
+├── apex-flow-dashboard/     # Next.js 16 Observability Dashboard & Web Crypto E2EE Inspector
 ├── sdks/
 │   └── python/              # Python SDK (`apex-flow-sdk`), StorageResolver & Serialization
-├── migrations/              # PostgreSQL schema migrations & retention routines
 └── docs/                    # Specifications & Deployment Guides
 ```
 
@@ -137,8 +138,7 @@ apex-flow/
 
 ### 1. Start Control Plane Backend
 ```bash
-cd apex-flow-backend
-./dev.sh
+./dev-backend.sh
 # REST API running at http://127.0.0.1:8000
 # OpenAPI Docs at http://127.0.0.1:8000/docs
 ```
@@ -158,6 +158,7 @@ cd sdks/python/examples
 ./run.sh large         # Transparent payload offload demo (>250KB)
 ./run.sh enc           # Zero-Knowledge client-side AES-256-GCM encryption
 ./run.sh hb            # Worker heartbeat & liveness monitoring
+./run.sh cron          # Cron & scheduled workflow registration/dispatch
 ```
 
 ---

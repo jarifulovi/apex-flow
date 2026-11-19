@@ -40,10 +40,11 @@ The SDK is **not merely a thin HTTP wrapper** for the control plane. It encapsul
 - Before executing a step, the SDK queries the control plane or local memory for existing execution checkpoints.
 - If a step was successfully executed during a prior attempt, the SDK **skips re-executing the step function** and immediately returns the memoized result.
 - **Loop-Safe Execution (`(step_name, step_order)`)**: Step caches and memoization keys are uniquely scoped to `(step_name, step_order)`. Invoking the same step function inside a `for` or `while` loop produces distinct, sequenced execution checkpoints rather than colliding on the first iteration.
+- **Dispatch Step Isolation**: `step_order == 0` is reserved for control-plane workflow entrypoint dispatch steps (such as cron or manual schedule triggers) and is skipped when loading user step checkpoints (`step_order > 0`).
 - If a worker crashes mid-workflow, a resuming worker skips completed steps and resumes precisely at the first uncompleted step.
 
 ### 2. Resilient Network HTTP Client & Full Jitter Backoff
-- All SDK network requests (`trigger_workflow`, `complete_workflow`, `report_step`, `poll_next_step`, `upload_payload`, `download_payload`) execute through a resilient HTTP wrapper (`_request_with_retry`).
+- SDK lifecycle and schedule requests (`trigger_workflow`, `complete_workflow`, `cancel_workflow`, `restart_workflow`, `fork_workflow`, `sync_schedules`, and step status reporting) execute through a resilient HTTP wrapper (`_request_with_retry`).
 - **Automatic Retries**: Automatically retries transient network connection drops, timeouts, and HTTP server errors (`500`, `502`, `503`, `504`).
 - **Exponential Backoff & Full Jitter**:
   $$T_{\text{wait}} = \min(T_{\text{max}}, T_{\text{base}} \times 2^{\text{attempt}}) \times \text{random}(0.8, 1.2)$$
@@ -63,7 +64,7 @@ The SDK is **not merely a thin HTTP wrapper** for the control plane. It encapsul
 
 ### 6. Idempotency & Sub-Workflow Propagation
 - **Deduplication Transmission**: Accepts `deduplication_id` on workflow triggers to guarantee single-execution idempotency at the database level.
-- **Parent-Child Lineage**: Automatically attaches `parent_workflow_id` when launching sub-workflows from within workflow context (`ctx.trigger_workflow`), establishing hierarchical lineage in monitoring dashboards.
+- **Parent-Child Lineage**: Automatically attaches `parent_workflow_id` when launching sub-workflows from within workflow context (`ctx.child_workflow(...)`), establishing hierarchical lineage in monitoring dashboards.
 
 ### 7. Deterministic Step Sequence Tracking
 - Automatically assigns an incrementing sequence integer (`step_order = 1, 2, 3...`) when queueing steps under a workflow run, ensuring deterministic step ordering in timelines regardless of microsecond database timestamp precision.
@@ -111,9 +112,10 @@ The SDK is **not merely a thin HTTP wrapper** for the control plane. It encapsul
 - **Web Dashboard Decryption**: The Next.js dashboard decrypts payloads client-side in the browser using the Web Crypto API (`SubtleCrypto`). Passphrases never leave the client.
 
 ### 12. Advanced Flow Control & Scheduling
+- **Declarative Cron & Scheduled Workflows (`cron`, `timezone`)**: Workflows can declare recurring schedules directly via `@client.workflow(name="...", cron="*/5 * * * *", timezone="UTC")`. When `client.start_worker()` begins, the SDK automatically calls `sync_schedules()` (`POST /api/v1/schedules/sync`) to idempotently upsert declared schedules before polling starts. Workers pick up dispatched runs (`step_order == 0`, `step_name == workflow_name`), execute the workflow handler in a fresh `WorkflowContext`, complete the run, and report dispatch step completion.
 - **Delayed Step Execution (`delay_seconds`)**: Steps can declare `delay_seconds`, hiding them from worker queue polling until `available_at` timestamp matures.
 - **Priority Queuing (`priority`)**: Steps accept an integer `priority` (default `0`), dequeued in ascending order (`0` = highest priority) to protect against starvation from bulk batch jobs.
-- **Worker Long Polling**: Workers poll with `timeout_seconds` (default 10s), holding the connection open on the control plane and waking instantly on step availability to eliminate CPU-intensive spin polling.
+- **Worker Long Polling**: Workers poll with `timeout_seconds` (default 20s in `ApexFlowClient`), holding the connection open on the control plane and waking instantly on step availability to eliminate CPU-intensive spin polling.
 - **Duplicate Registration Guard**: The SDK client strictly prevents accidental naming collisions by raising `ValueError` if a workflow name or step function is registered more than once.
 - **Workflow-Level Deadlines (`timeout_seconds`)**: Workflows can declare run timeouts; runs exceeding `deadline_at` are automatically failed and orphan steps cancelled.
 - **Event Debouncing (`debounce_seconds`, `max_debounce_seconds`)**: Coalesces rapid triggers sharing the same `deduplication_id` within a sliding window into a single execution.
@@ -155,8 +157,12 @@ All language SDKs communicate with the backend control plane via HTTP REST endpo
    - *Returns*: Final workflow status (`completed`).
 
 7. **Worker Heartbeat**: `POST /api/v1/workers/heartbeat`
-   - *Payload*: `{"name": "...", "worker_id": "<uuid>"}`
+   - *Payload*: `{"name": "..."}`
    - *Returns*: Worker registration and heartbeat status (`id`, `name`, `status`, `last_seen_at`).
+
+8. **Sync Worker Schedules**: `POST /api/v1/schedules/sync`
+   - *Payload*: `{"schedules": [{"workflow_name": "<name>", "cron_expression": "*/5 * * * *", "timezone": "UTC"}]}`
+   - *Returns*: Array of synchronized schedule records (`id`, `workflow_name`, `cron_expression`, `timezone`, `is_active`, `next_run_at`), preserving any existing pause state set in the control plane.
 
 ---
 
@@ -165,6 +171,6 @@ All language SDKs communicate with the backend control plane via HTTP REST endpo
 All language SDK implementations reside under `sdks/` in the monorepo:
 
 - **Python**: `sdks/python/` (`apex-flow-sdk`)
-- **TypeScript**: `sdks/typescript/` (`@apex-flow/sdk`)
-- **Go**: `sdks/go/` (`github.com/apex-flow/sdk-go`)
-- **Java**: `sdks/java/`
+- **TypeScript**: `sdks/typescript/` (`@apex-flow/sdk`) *(Planned / Roadmap)*
+- **Go**: `sdks/go/` (`github.com/apex-flow/sdk-go`) *(Planned / Roadmap)*
+- **Java**: `sdks/java/` *(Planned / Roadmap)*

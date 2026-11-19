@@ -17,12 +17,14 @@ The backend **never executes user business logic**, nor does it store sensitive 
 | Component | Technology | Version Constraint | Purpose |
 | :--- | :--- | :--- | :--- |
 | **Runtime** | Python | `>= 3.12` | High-performance asynchronous runtime. |
-| **Framework** | FastAPI | `>= 0.110.0` | Asynchronous REST API & OpenAPI schema generator. |
+| **Framework** | FastAPI | `>= 0.136.0,<0.142.0` | Asynchronous REST API & OpenAPI schema generator. |
 | **ORM** | SQLAlchemy (Async) | `>= 2.0.0` | Non-blocking database models & query builder (`sqlalchemy[asyncio]`). |
 | **Driver** | AsyncPG | `>= 0.30.0` | High-throughput PostgreSQL database driver. |
 | **Config** | Pydantic Settings | `>= 2.0.0` | Type-safe environment configuration loader. |
 | **Validation** | Pydantic | `>= 2.7.0` | Request serialization & payload schema validation. |
 | **Security** | PyJWT | `>= 2.8.0` | Dashboard Supabase Bearer JWT decoding & validation. |
+| **Scheduling** | Croniter | `>= 2.0.0` | Timezone-aware 5-field cron expression parsing and next-run scheduling. |
+| **Object Storage** | Boto3 | `>= 1.34.0` | S3 / Cloudflare R2 / Supabase Storage object offloading adapter. |
 
 ---
 
@@ -34,25 +36,25 @@ The backend follows **Hexagonal Architecture (Ports & Adapters)** to decouple co
   [ Dashboard UI (Next.js) ]          [ SDK Worker Instances ]
              │                                   │
              ▼ (Bearer JWT)                      ▼ (X-ApexFlow-Project-Key)
-    ┌──────────────────────────────────────────────────────────────────┐
-    │                     FastAPI API Router Layer                     │
-    │        (workflows.py, steps.py, storage.py, keys.py, health.py)  │
-    └────────────────┬─────────────────────────────────────────────────┘
-                                     │
-                                     ▼
-    ┌──────────────────────────────────────────────────────────────────┐
-    │                      Service Engine Layer                        │
-    │       (WorkflowService, StepService, QueueService, etc)          │
-    └─────────────────┬──────────────────────────────┬─────────────────┘
-                      │                              │
-                      ▼                              ▼
-    ┌──────────────────────────────────┐   ┌───────────────────────────┐
-    │   Infrastructure Adapters Layer  │   │  Async SQLAlchemy ORM     │
-    │    (`app/adapters/storage/`)     │   │   & PostgreSQL Database   │
-    │  - LocalStorage (Atomic Disk)    │   │  (WorkflowRuns, Steps)    │
-    │  - S3Storage (Supabase/S3/R2)    │   │                           │
-    │  - PayloadPolicyManager (250KB)  │   │                           │
-    └──────────────────────────────────┘   └───────────────────────────┘
+    ┌────────────────────────────────────────────────────────────────────────────┐
+    │                           FastAPI API Router Layer                         │
+    │  (workflows.py, steps.py, schedules.py, projects.py, workers.py, storage)  │
+    └──────────────────────────────────┬─────────────────────────────────────────┘
+                                       │
+                                       ▼
+    ┌────────────────────────────────────────────────────────────────────────────┐
+    │                            Service Engine Layer                            │
+    │ (WorkflowService, StepService, QueueService, ScheduleService, AlertService)│
+    └───────────────────────┬─────────────────────────────────┬──────────────────┘
+                            │                                 │
+                            ▼                                 ▼
+    ┌──────────────────────────────────┐   ┌─────────────────────────────────────┐
+    │   Infrastructure Adapters Layer  │   │      Async SQLAlchemy ORM           │
+    │    (`app/adapters/storage/`)     │   │      & PostgreSQL Database          │
+    │  - LocalStorage (Atomic Disk)    │   │ (Projects, WorkflowRuns, Steps,     │
+    │  - S3Storage (Supabase/S3/R2)    │   │  Schedules, Workers)                │
+    │  - PayloadPolicyManager (250KB)  │   │                                     │
+    └──────────────────────────────────┘   └─────────────────────────────────────┘
 ```
 
 ### 🧱 Services vs. Adapters Design Pattern
@@ -71,8 +73,8 @@ The backend follows **Hexagonal Architecture (Ports & Adapters)** to decouple co
 ### 1. Database Connection Pooling & Fault Recovery
 The database engine (`app/core/database.py`) is engineered for production stability under heavy concurrency and transient network drops:
 - **`pool_pre_ping=True`**: Tests connections before usage to automatically drop and replace stale/dead connections.
-- **`pool_recycle=1800`**: Recycles database connections every 30 minutes to prevent firewall or PostgreSQL server-side connection timeout drops.
-- **Connection Pool Tuning**: Configures `pool_size=20` and `max_overflow=10` for high concurrency without PostgreSQL connection exhaustion.
+- **`pool_recycle=300`**: Configurable via `DB_POOL_RECYCLE` (default 300s / 5 minutes) to prevent firewall or PostgreSQL server-side idle connection timeout drops, alongside `statement_cache_size=0` and `prepared_statement_cache_size=0` for PgBouncer / Supabase transaction pooler compatibility.
+- **Connection Pool Tuning**: Defaults to `DB_POOL_SIZE=5`, `DB_MAX_OVERFLOW=3`, and `DB_POOL_TIMEOUT=30` (tunable via environment variables) to stay cleanly within managed PostgreSQL connection limits.
 
 ### 2. High-Throughput Scoped Queue Polling & Scheduling (`QueueService`)
 - Uses dialect-aware PostgreSQL `SELECT FOR UPDATE OF WorkflowStep SKIP LOCKED`.
@@ -150,7 +152,16 @@ Managed within FastAPI `lifespan`, an asynchronous background sweeper runs every
 - **Worker Disconnect Detection**: Atomically transitions active workers missing heartbeats ($>60\text{s}$) to `inactive` status and schedules an edge-triggered `worker.disconnected` alert once per outage.
 - **Stale Lock Recovery**: Recovers step leases stuck in `running` when a worker process crashes, re-queuing the steps for healthy workers.
 - **Workflow Timeout Enforcement**: Enforces workflow deadlines, marking timed-out runs as `failed` and cancelling pending steps.
-- **Sparse Partial Indexing**: All sweeper queries leverage PostgreSQL partial indexes (`WHERE status = 'running'`), completing in $<1\text{ms}$ across all tenants in a single query without project-by-project loop overhead.
+- **Cron Schedule Dispatching (`ScheduleService.dispatch_due_schedules`)**: Evaluates due active cron schedules, creates triggered workflow runs and entrypoint steps, advances `next_run_at`, and notifies workers immediately.
+- **Sparse Partial Indexing**: All sweeper queries leverage PostgreSQL partial indexes (`WHERE status = 'running'` and `WHERE is_active = true AND next_run_at IS NOT NULL`), completing in $<1\text{ms}$ across all tenants in a single query without project-by-project loop overhead.
+
+### 11. Zero-Compute Cron & Scheduled Workflows Engine (`ScheduleService`)
+Acts as a central trigger clock on the control plane without requiring external cron runners or dedicated worker compute between runs:
+- **Project-Scoped Schedule Definitions (`workflow_schedules`)**: Stores recurring schedule definitions scoped by `project_id` with a composite unique constraint `UNIQUE (project_id, workflow_name)` and partial index `idx_workflow_schedules_due` (`WHERE is_active = true AND next_run_at IS NOT NULL`).
+- **Timezone-Aware 5-Field Cron Evaluation**: Strictly validates standard 5-field cron expressions via `croniter` and IANA timezones via `zoneinfo.ZoneInfo` (defaulting to `UTC`).
+- **Distributed-Safe Dispatch Ticker**: Claims due active schedules (`is_active = TRUE AND next_run_at <= now()`) using PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED`, creates a `WorkflowRun` (`trigger_source: "schedule"`) and an entrypoint dispatch `WorkflowStep` (`step_order=0`, `step_name=workflow_name`), advances `last_run_at` and `next_run_at`, and wakes long-polling workers via `QueueNotifier.notify(project_id)`.
+- **No-Backfill Pause/Resume & On-Demand Triggering**: Pausing sets `is_active = FALSE` and clears `next_run_at` to `NULL`; resuming computes the next future occurrence from `now()` (`catchup=False`, preventing backfill thundering-herd storms). Manual **"Run Now"** (`trigger_source: "schedule_manual"`) dispatches an immediate workflow run without shifting `next_run_at`.
+- **Worker Startup Auto-Sync**: `POST /api/v1/schedules/sync` idempotently registers or updates cron declarations emitted by starting SDK workers while preserving existing `is_active` pause states set in the dashboard.
 
 ---
 
@@ -225,5 +236,14 @@ The backend control plane enforces a **Header-Strict Two-Layer Authentication Mo
 | `/api/v1/steps/report` | `POST` | Project API Key | Report worker step execution result (`success` / `failed`). |
 | `/api/v1/workers` | `GET` | Bearer / Key | List connected execution workers for a project. |
 | `/api/v1/workers/heartbeat` | `POST` | Project API Key | Register a worker or record an active heartbeat. |
+| `/api/v1/schedules/sync` | `POST` | Project API Key | Idempotently register or update workflow schedules declared by starting SDK workers. |
+| `/api/v1/projects/{project_id}/schedules` | `GET` | Bearer / Key | List all workflow cron schedules configured for a project. |
+| `/api/v1/projects/{project_id}/schedules` | `POST` | Bearer / Key | Create a new recurring workflow schedule. |
+| `/api/v1/projects/{project_id}/schedules/{schedule_id}` | `GET` | Bearer / Key | Retrieve a single workflow schedule by ID. |
+| `/api/v1/projects/{project_id}/schedules/{schedule_id}` | `PATCH` | Bearer / Key | Update cron expression, timezone, workflow name, or active status. |
+| `/api/v1/projects/{project_id}/schedules/{schedule_id}` | `DELETE` | Bearer / Key | Permanently delete a workflow schedule. |
+| `/api/v1/projects/{project_id}/schedules/{schedule_id}/pause` | `POST` | Bearer / Key | Pause an active schedule and clear `next_run_at`. |
+| `/api/v1/projects/{project_id}/schedules/{schedule_id}/resume` | `POST` | Bearer / Key | Resume a paused schedule and compute upcoming `next_run_at`. |
+| `/api/v1/projects/{project_id}/schedules/{schedule_id}/run` | `POST` | Bearer / Key | Trigger an immediate workflow run ("Run Now") without shifting `next_run_at`. |
 | `/api/v1/storage/upload` | `POST` | Bearer / Key | Upload payload/file artifact and return `$apexflow_ref` descriptor. |
 | `/api/v1/storage/download/{key:path}` | `GET` | Bearer / Key / `?token` | Stream binary content or offloaded JSON for a storage key. |

@@ -12,7 +12,7 @@ ApexFlow is architected with clear decoupling between the **Zero-Knowledge Backe
                                ┌──────────────────────────────────────────────┐
                                │           Vercel (Global Edge CDN)           │
                                │                                              │
-                               │    ApexFlow Dashboard UI (Next.js 14)        │
+                               │    ApexFlow Dashboard UI (Next.js 16)        │
                                │    (https://apexflow-dashboard.vercel.app)   │
                                └──────────────────────┬───────────────────────┘
                                                       │
@@ -61,10 +61,11 @@ ApexFlow is architected with clear decoupling between the **Zero-Knowledge Backe
    | `DATABASE_URL` | `postgresql+asyncpg://...` | Connection string for Render Postgres or Supabase DB. |
    | `PROJECT_NAME` | `ApexFlow Control Plane` | Display name for API docs. |
    | `BACKEND_CORS_ORIGINS` | `https://<your-vercel-dashboard-app>.vercel.app` | Allowed CORS origins for dashboard cross-origin calls. |
-   | `STORAGE_PROVIDER` | `s3` (or `cloudflare`) | Cloud storage adapter (`local` is rejected in production to prevent container disk overflow). |
+   | `STORAGE_PROVIDER` | `s3` | Object storage adapter (`s3`, `cloudflare`, or `r2` for AWS S3, Cloudflare R2, and Supabase Storage via `S3_ENDPOINT_URL`; `local` is rejected in `production` to prevent container disk overflow). |
    | `PAYLOAD_MAX_INLINE_BYTES` | `256000` | 250KB offload threshold. |
    | `PAYLOAD_MAX_SINGLE_BYTES` | `2097152` | 2MB single payload limit ceiling. |
-   | `SUPABASE_JWT_SECRET` | `<your-supabase-jwt-secret>` | Secret key for verifying dashboard Bearer tokens. |
+   | `SUPABASE_JWT_SECRET` | `<your-supabase-jwt-secret>` | Secret key for verifying HS256 dashboard Bearer tokens. |
+   | `SUPABASE_JWKS_URL` | `https://<your-project-ref>.supabase.co/auth/v1/.well-known/jwks.json` | Supabase JWKS endpoint for verifying asymmetric (ES256/RS256) dashboard Bearer tokens. |
    | `S3_BUCKET_NAME` | `<your-s3-bucket-name>` | Target S3 or Cloudflare R2 bucket name. |
    | `S3_ENDPOINT_URL` | `<your-endpoint-url>` | Endpoint URL for Cloudflare R2, MinIO, or Supabase Storage. |
    | `AWS_ACCESS_KEY_ID` | `<access-key-id>` | Cloud storage access key ID. |
@@ -119,10 +120,11 @@ cd apex-flow
 ```
 
 ### 2. Configure Production Environment Variables
+Create root `.env` overrides for Docker Compose (or configure service variables using `apex-flow-backend/.env.production.example` and `apex-flow-dashboard/.env.example` as templates):
 ```bash
-cp .env.production.template .env
+cp apex-flow-backend/.env.production.example .env
 ```
-Edit `.env` and configure your production credentials:
+Edit `.env` to set `DATABASE_URL` / Postgres credentials, `SUPABASE_JWT_SECRET`, `NEXT_PUBLIC_API_URL`, and Supabase frontend keys (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`):
 ```bash
 nano .env
 ```
